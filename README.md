@@ -38,8 +38,17 @@ niche is the combination:
 
 ## Status
 
-Pre-alpha, under active development. The reproducible-pipeline **engine** and its
-tests are landing first; the PySide6 GUI and MNE-backed steps follow. See
+Pre-alpha, under active development. Working today, all covered by tests:
+
+- the reproducible-pipeline **engine** (`Dataset` / `Step` / `Pipeline` + YAML),
+- MNE-backed **preprocessing** steps (band-pass filter, resample),
+- a headless **CLI** — `cortica run pipeline.yaml raw.fif --out … --report …`,
+- an HTML **report** (pipeline + provenance),
+- a first **PySide6 GUI** — modality-aware step library, signal viewer, pipeline
+  panel, and a threaded Run.
+
+Next: epoching/averaging, fNIRS-specific steps (Beer–Lambert, SCI, TDDR), richer
+report figures, and packaged installers. See
 [`docs/specs/2026-09-15-cortica-design.md`](docs/specs/2026-09-15-cortica-design.md)
 for the full design.
 
@@ -80,13 +89,18 @@ steps:
 
 ```bash
 pip install -e ".[dev]"
-pytest        # run the test suite
+pytest        # run the engine test suite
 ruff check .  # lint
+
+# To also run the GUI tests you need a Qt binding; they run headless (offscreen):
+pip install -e ".[dev,gui,gui-test]"
+QT_QPA_PLATFORM=offscreen pytest
 ```
 
 The engine in [`cortica/core`](cortica/core) has no Qt dependency and is fully
 unit-tested without a GUI — including a round-trip test proving a saved pipeline
-re-runs to an identical result.
+re-runs to an identical result. GUI logic lives in a headless `AppState`
+controller so it can be tested offscreen with `pytest-qt`.
 
 ## License
 
