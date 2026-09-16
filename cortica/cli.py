@@ -61,7 +61,7 @@ def _run(args) -> int:
 
 def _launch_gui() -> int:
     try:
-        import PySide6  # noqa: F401
+        from cortica.gui.app import run_app
     except ImportError:
         print(
             "The Cortica desktop GUI needs the 'gui' extra. Install it with:\n"
@@ -70,14 +70,7 @@ def _launch_gui() -> int:
         )
         return 1
 
-    # The desktop GUI is the next development slice; not wired up yet.
-    print(
-        "The Cortica desktop GUI is under construction.\n"
-        "For now, run pipelines headless:\n"
-        "    cortica run <pipeline.yaml> <input> --report out.html",
-        file=sys.stderr,
-    )
-    return 1
+    return run_app()
 
 
 if __name__ == "__main__":

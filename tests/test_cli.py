@@ -50,9 +50,3 @@ def test_run_command_writes_report(tmp_path):
     assert rc == 0
     assert report_path.exists()
     assert "Band-pass filter" in report_path.read_text()
-
-
-def test_no_command_without_gui_prints_install_hint(capsys):
-    rc = main([])
-    assert rc == 1
-    assert "gui" in capsys.readouterr().err.lower()
