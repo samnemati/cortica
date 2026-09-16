@@ -41,8 +41,9 @@ dependencies = [
 # Desktop GUI: pip install cortica[gui]
 gui = ["PySide6>=6.6", "pyqtgraph>=0.13"]
 # Development (tests + lint + types): pip install cortica[dev]
-# pytest-qt is added alongside the GUI slice, when a Qt binding is present in CI.
 dev = ["pytest>=8", "pytest-cov", "ruff>=0.4", "mypy>=1.8"]
+# GUI tests — needs a Qt binding, so kept out of `dev`: pip install cortica[dev,gui,gui-test]
+gui-test = ["pytest-qt"]
 # Standalone installers: pip install cortica[packaging]
 packaging = ["build", "briefcase"]
 
