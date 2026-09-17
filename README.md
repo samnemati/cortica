@@ -54,16 +54,27 @@ for the full design.
 
 ## Install
 
-Cortica isn't on PyPI yet. For now, install from source:
+Once released to PyPI:
+
+```bash
+pip install "cortica[gui]"     # engine + desktop GUI
+```
+
+Or from source (works today):
 
 ```bash
 git clone https://github.com/samnemati/cortica.git
 cd cortica
-pip install -e ".[gui]"     # engine + desktop GUI
+pip install -e ".[gui]"
 ```
 
-The headless engine works without Qt (`pip install -e .`); the `[gui]` extra adds
-PySide6 and pyqtgraph for the desktop app.
+The headless engine works without Qt (`pip install cortica`); the `[gui]` extra adds
+PySide6 and pyqtgraph for the desktop app. Then:
+
+```bash
+cortica                                                # launch the desktop GUI
+cortica run analysis.pipeline.yaml raw.fif --report out.html   # or run headless
+```
 
 ## Reproducible pipelines
 
