@@ -14,6 +14,13 @@ def test_eeg_sample_is_detected_as_eeg():
     assert hasattr(ds.payload, "get_data")  # a real MNE Raw
 
 
+def test_eeg_sample_carries_stimulus_events_for_epoching():
+    ds = eeg_sample()
+    annotations = ds.payload.annotations
+    assert len(annotations) > 0
+    assert "target" in set(annotations.description)
+
+
 def test_fnirs_sample_is_detected_as_fnirs():
     ds = fnirs_sample()
     assert ds.modality == "fnirs"

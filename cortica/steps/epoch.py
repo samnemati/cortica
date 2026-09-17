@@ -40,6 +40,40 @@ class FixedLengthEpochs(Step):
 
 
 @register
+class EventEpochs(Step):
+    id = "epochs_events"
+    name = "Epochs (by events)"
+    category = "Segment"
+    modalities = ["eeg", "fnirs"]
+    params = [
+        Float("tmin", -0.2, unit="s", label="Start (rel. event)"),
+        Float("tmax", 0.8, unit="s", label="End (rel. event)"),
+    ]
+
+    def check(self, ds) -> None:
+        import mne
+
+        if not isinstance(ds.payload, mne.io.BaseRaw):
+            raise StepError("Event-based epoching needs continuous (Raw) data.")
+        if len(ds.payload.annotations) == 0:
+            raise StepError(
+                "No events found — this recording has no annotations/triggers to epoch on."
+            )
+
+    def run(self, ds, p):
+        import mne
+
+        events, event_id = mne.events_from_annotations(ds.payload, verbose=False)
+        baseline = (None, 0) if p["tmin"] < 0 else None
+        epochs = mne.Epochs(
+            ds.payload, events, event_id=event_id,
+            tmin=p["tmin"], tmax=p["tmax"], baseline=baseline,
+            preload=True, verbose=False,
+        )
+        return ds.derive(epochs)
+
+
+@register
 class Average(Step):
     id = "average"
     name = "Average (evoked)"

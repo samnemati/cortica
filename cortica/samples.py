@@ -27,6 +27,10 @@ def eeg_sample(seconds: float = 10.0, sfreq: float = 200.0) -> Dataset:
         rows.append(signal)
     info = mne.create_info(names, sfreq, ch_types="eeg")
     raw = mne.io.RawArray(np.vstack(rows), info, verbose=False)
+    # stimulus events (oddball-style: mostly "standard", occasional "target")
+    onsets = np.arange(1.0, seconds - 0.5, 1.0)
+    labels = ["target" if i % 4 == 2 else "standard" for i in range(len(onsets))]
+    raw.set_annotations(mne.Annotations(onsets, np.zeros(len(onsets)), labels))
     return dataset_from_raw(raw)
 
 

@@ -12,7 +12,8 @@ mne = pytest.importorskip("mne")
 from cortica.core.errors import StepError  # noqa: E402
 from cortica.core.registry import default_registry  # noqa: E402
 from cortica.io import dataset_from_raw  # noqa: E402
-from cortica.steps.epoch import Average, FixedLengthEpochs  # noqa: E402
+from cortica.samples import eeg_sample  # noqa: E402
+from cortica.steps.epoch import Average, EventEpochs, FixedLengthEpochs  # noqa: E402
 
 
 def _raw(dur=10.0, sfreq=100.0):
@@ -54,7 +55,27 @@ def test_average_produces_an_evoked_from_epochs():
     assert data.shape[0] == 3
 
 
+def test_event_epochs_segments_around_annotations():
+    out = EventEpochs().apply(eeg_sample(), {"tmin": -0.1, "tmax": 0.4})
+    data = out.payload.get_data()
+    assert data.ndim == 3
+    assert data.shape[0] >= 1  # at least one event epoched
+
+
+def test_event_epochs_requires_events():
+    ds = dataset_from_raw(_raw())  # _raw() has no annotations
+    with pytest.raises(StepError):
+        EventEpochs().apply(ds, {"tmin": -0.1, "tmax": 0.4})
+
+
+def test_event_epochs_rejects_already_epoched_data():
+    epoched = FixedLengthEpochs().apply(dataset_from_raw(_raw()), {"duration": 1.0})
+    with pytest.raises(StepError):
+        EventEpochs().apply(epoched, {})
+
+
 def test_epoch_steps_register_themselves():
     import cortica.steps  # noqa: F401
     assert default_registry.get("epochs_fixed") is FixedLengthEpochs
+    assert default_registry.get("epochs_events") is EventEpochs
     assert default_registry.get("average") is Average
