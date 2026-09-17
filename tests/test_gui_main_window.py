@@ -58,6 +58,21 @@ def test_run_button_processes_and_updates_result(qtbot):
     assert w.state.result.payload.info["sfreq"] == 100.0
 
 
+def test_load_eeg_sample_populates_the_window(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    assert w.state.modality == "eeg"
+    assert w.library.count() > 0
+
+
+def test_load_fnirs_sample_switches_modality_to_fnirs(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_fnirs_sample()
+    assert w.state.modality == "fnirs"
+
+
 def test_cli_no_command_launches_gui(monkeypatch):
     import cortica.gui.app as app_mod
     from cortica.cli import main

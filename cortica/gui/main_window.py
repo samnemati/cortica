@@ -49,6 +49,14 @@ class MainWindow(QMainWindow):
         open_action.triggered.connect(self._open)
         toolbar.addAction(open_action)
 
+        sample_menu = self.menuBar().addMenu("Sample")
+        eeg_action = QAction("Load EEG sample", self)
+        eeg_action.triggered.connect(self._load_eeg_sample)
+        sample_menu.addAction(eeg_action)
+        fnirs_action = QAction("Load fNIRS sample", self)
+        fnirs_action.triggered.connect(self._load_fnirs_sample)
+        sample_menu.addAction(fnirs_action)
+
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(8, 8, 8, 8)
@@ -157,6 +165,18 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Could not open file: {exc}")
             return
         self.statusBar().showMessage(f"Loaded {path}")
+
+    def _load_eeg_sample(self) -> None:
+        from .. import samples
+
+        self.state.set_source(samples.eeg_sample())
+        self.statusBar().showMessage("Loaded synthetic EEG sample.")
+
+    def _load_fnirs_sample(self) -> None:
+        from .. import samples
+
+        self.state.set_source(samples.fnirs_sample())
+        self.statusBar().showMessage("Loaded synthetic fNIRS sample.")
 
     # ---- signal viewer ------------------------------------------------------
     def _replot(self) -> None:
