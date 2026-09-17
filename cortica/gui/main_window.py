@@ -254,7 +254,11 @@ class MainWindow(QMainWindow):
         payload = getattr(ds, "payload", None) if ds else None
         if payload is None or not hasattr(payload, "get_data"):
             return
-        data = payload.get_data()
+        data = np.asarray(payload.get_data())
+        if data.ndim == 3:  # epochs (n_epochs, n_channels, n_times) -> show the average
+            data = data.mean(axis=0)
+        if data.ndim != 2:
+            return
         times = getattr(payload, "times", np.arange(data.shape[1]))
         n = min(len(data), 6)
         for i in range(n):

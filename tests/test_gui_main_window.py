@@ -119,6 +119,27 @@ def test_move_selected_step_down(qtbot):
     assert [s.step_id for s in w.state.pipeline.steps] == ["resample", "bandpass_filter"]
 
 
+def test_viewer_handles_an_epochs_result(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_fixed", {"duration": 1.0})
+    w.state.run_sync()  # Raw -> Epochs (3-D)
+    w._replot()  # must not raise on 3-D data
+    assert w.state.result.payload.get_data().ndim == 3
+
+
+def test_viewer_handles_an_evoked_result(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_fixed", {"duration": 1.0})
+    w.state.add_step("average")
+    w.state.run_sync()  # Raw -> Epochs -> Evoked (2-D)
+    w._replot()
+    assert w.state.result.payload.get_data().ndim == 2
+
+
 def test_cli_no_command_launches_gui(monkeypatch):
     import cortica.gui.app as app_mod
     from cortica.cli import main
