@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QFileDialog,
+    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import io
+from .param_form import ParamForm
 from .runner import run_in_background
 from .state import AppState
 
@@ -35,6 +37,7 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self.state = state or AppState()
         self._run_signals = None  # keeps a running worker's signals alive
+        self._param_form: ParamForm | None = None
         self.setWindowTitle("Cortica")
         self._build_ui()
         self._connect_state()
@@ -74,7 +77,33 @@ class MainWindow(QMainWindow):
         right_layout.setContentsMargins(8, 8, 8, 8)
         right_layout.addWidget(QLabel("Pipeline"))
         self.pipeline_list = QListWidget()
+        self.pipeline_list.currentRowChanged.connect(self._show_params_for)
         right_layout.addWidget(self.pipeline_list)
+
+        buttons = QHBoxLayout()
+        up_button = QPushButton("↑")
+        up_button.setToolTip("Move step up")
+        up_button.clicked.connect(lambda: self._move_selected(-1))
+        down_button = QPushButton("↓")
+        down_button.setToolTip("Move step down")
+        down_button.clicked.connect(lambda: self._move_selected(1))
+        remove_button = QPushButton("Remove")
+        remove_button.clicked.connect(self._remove_selected)
+        buttons.addWidget(up_button)
+        buttons.addWidget(down_button)
+        buttons.addWidget(remove_button)
+        right_layout.addLayout(buttons)
+
+        self._param_placeholder = QLabel("Select a step to edit its parameters.")
+        self._param_placeholder.setWordWrap(True)
+        self._param_placeholder.setStyleSheet("color: #8a99a8;")
+        right_layout.addWidget(self._param_placeholder)
+        self._param_container = QWidget()
+        self._param_layout = QVBoxLayout(self._param_container)
+        self._param_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.addWidget(self._param_container)
+
+        right_layout.addStretch(1)
         self.run_button = QPushButton("Run pipeline")
         self.run_button.clicked.connect(self._run)
         right_layout.addWidget(self.run_button)
@@ -115,6 +144,8 @@ class MainWindow(QMainWindow):
 
     # ---- pipeline panel -----------------------------------------------------
     def _refresh_pipeline(self) -> None:
+        row = self.pipeline_list.currentRow()
+        self.pipeline_list.blockSignals(True)
         self.pipeline_list.clear()
         for i, pstep in enumerate(self.state.pipeline.steps, 1):
             try:
@@ -122,6 +153,44 @@ class MainWindow(QMainWindow):
             except KeyError:
                 name = pstep.step_id
             self.pipeline_list.addItem(f"{i}. {name}")
+        row = min(row, self.pipeline_list.count() - 1)
+        self.pipeline_list.setCurrentRow(row)
+        self.pipeline_list.blockSignals(False)
+        self._show_params_for(row)
+
+    def _show_params_for(self, row: int) -> None:
+        if self._param_form is not None:
+            self._param_form.setParent(None)
+            self._param_form.deleteLater()
+            self._param_form = None
+        steps = self.state.pipeline.steps
+        if row is None or row < 0 or row >= len(steps):
+            self._param_placeholder.setVisible(True)
+            return
+        self._param_placeholder.setVisible(False)
+        pstep = steps[row]
+        try:
+            params = self.state.registry.get(pstep.step_id).params
+        except KeyError:
+            params = []
+        form = ParamForm(params, pstep.params)
+        form.changed.connect(lambda values, i=row: self.state.set_step_params(i, values))
+        self._param_layout.addWidget(form)
+        self._param_form = form
+
+    def _remove_selected(self) -> None:
+        row = self.pipeline_list.currentRow()
+        if 0 <= row < len(self.state.pipeline.steps):
+            self.state.remove_step(row)
+
+    def _move_selected(self, delta: int) -> None:
+        row = self.pipeline_list.currentRow()
+        if row < 0:
+            return
+        self.state.move_step(row, delta)
+        new_row = row + delta
+        if 0 <= new_row < self.pipeline_list.count():
+            self.pipeline_list.setCurrentRow(new_row)
 
     # ---- run ----------------------------------------------------------------
     def _run(self) -> None:

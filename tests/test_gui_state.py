@@ -84,3 +84,29 @@ def test_run_without_source_raises(qtbot, reg):
     st = AppState(registry=reg)
     with pytest.raises(RuntimeError):
         st.run_sync()
+
+
+def test_set_step_params_updates_that_step(qtbot, reg):
+    st = AppState(registry=reg)
+    st.set_source(Dataset(2.0, "eeg"))
+    st.add_step("scale", {"factor": 2})
+    st.set_step_params(0, {"factor": 5})
+    assert st.pipeline.steps[0].params == {"factor": 5}
+
+
+def test_move_step_reorders_the_pipeline(qtbot, reg):
+    st = AppState(registry=reg)
+    st.set_source(Dataset(2.0, "eeg"))
+    st.add_step("scale")
+    st.add_step("eeg_only")
+    with qtbot.waitSignal(st.pipelineChanged):
+        st.move_step(0, 1)  # move "scale" down one
+    assert [s.step_id for s in st.pipeline.steps] == ["eeg_only", "scale"]
+
+
+def test_move_step_out_of_range_is_a_noop(qtbot, reg):
+    st = AppState(registry=reg)
+    st.set_source(Dataset(2.0, "eeg"))
+    st.add_step("scale")
+    st.move_step(0, -1)  # nothing above the top
+    assert [s.step_id for s in st.pipeline.steps] == ["scale"]

@@ -55,6 +55,18 @@ class AppState(QObject):
         del self.pipeline.steps[index]
         self.pipelineChanged.emit()
 
+    def set_step_params(self, index: int, params: dict) -> None:
+        """Replace the params of the step at ``index`` (no list rebuild)."""
+        self.pipeline.steps[index].params = dict(params)
+
+    def move_step(self, index: int, delta: int) -> None:
+        """Move a step up (delta=-1) or down (delta=+1); out-of-range is a no-op."""
+        target = index + delta
+        steps = self.pipeline.steps
+        if index != target and 0 <= target < len(steps):
+            steps[index], steps[target] = steps[target], steps[index]
+            self.pipelineChanged.emit()
+
     def run_sync(self) -> Dataset:
         """Run the pipeline on the source (not the previous result). Sets result."""
         if self.source is None:

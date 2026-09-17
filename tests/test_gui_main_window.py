@@ -11,9 +11,11 @@ pytest.importorskip("pytestqt")
 mne = pytest.importorskip("mne")
 
 from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtWidgets import QDoubleSpinBox  # noqa: E402
 
 import cortica.steps  # noqa: E402,F401  register built-in steps
 from cortica.gui.main_window import MainWindow  # noqa: E402
+from cortica.gui.param_form import ParamForm  # noqa: E402
 from cortica.io import dataset_from_raw  # noqa: E402
 
 
@@ -71,6 +73,50 @@ def test_load_fnirs_sample_switches_modality_to_fnirs(qtbot):
     qtbot.addWidget(w)
     w._load_fnirs_sample()
     assert w.state.modality == "fnirs"
+
+
+def test_selecting_a_step_shows_its_param_form(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("bandpass_filter")
+    w.pipeline_list.setCurrentRow(0)
+    form = w.findChild(ParamForm)
+    assert form is not None
+    assert "l_freq" in form.values()
+
+
+def test_editing_a_param_updates_the_pipeline_step(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("bandpass_filter")
+    w.pipeline_list.setCurrentRow(0)
+    form = w.findChild(ParamForm)
+    form.findChildren(QDoubleSpinBox)[0].setValue(2.0)  # l_freq is the first field
+    assert w.state.pipeline.steps[0].params["l_freq"] == 2.0
+
+
+def test_remove_selected_step(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("bandpass_filter")
+    w.state.add_step("resample")
+    w.pipeline_list.setCurrentRow(0)
+    w._remove_selected()
+    assert [s.step_id for s in w.state.pipeline.steps] == ["resample"]
+
+
+def test_move_selected_step_down(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("bandpass_filter")
+    w.state.add_step("resample")
+    w.pipeline_list.setCurrentRow(0)
+    w._move_selected(1)
+    assert [s.step_id for s in w.state.pipeline.steps] == ["resample", "bandpass_filter"]
 
 
 def test_cli_no_command_launches_gui(monkeypatch):
