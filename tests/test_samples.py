@@ -19,3 +19,8 @@ def test_fnirs_sample_is_detected_as_fnirs():
     assert ds.modality == "fnirs"
     assert ds.meta["n_channels"] >= 2
     assert hasattr(ds.payload, "get_data")
+
+
+def test_fnirs_sample_is_raw_cw_amplitude_so_the_chain_can_run():
+    ds = fnirs_sample()
+    assert "fnirs_cw_amplitude" in set(ds.payload.get_channel_types())

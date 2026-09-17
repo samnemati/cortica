@@ -31,21 +31,34 @@ def eeg_sample(seconds: float = 10.0, sfreq: float = 200.0) -> Dataset:
 
 
 def fnirs_sample(seconds: float = 60.0, sfreq: float = 8.0) -> Dataset:
-    """A synthetic 4-pair fNIRS recording with HbO/HbR channels (~0.05 Hz waves)."""
+    """A synthetic 4-pair fNIRS recording as raw CW amplitude (two wavelengths each).
+
+    Built as raw optical amplitude with optode geometry so the real fNIRS chain
+    (optical density -> Beer-Lambert, SCI, TDDR) runs on it.
+    """
     import mne
 
     n = int(seconds * sfreq)
     t = np.arange(n) / sfreq
     rng = np.random.RandomState(7)
-    names, types, rows = [], [], []
+    geometry = {}
+    names, rows = [], []
     for pair in range(1, 5):
-        hemo = np.sin(2 * np.pi * 0.05 * t)
-        names.append(f"S{pair}_D{pair} hbo")
-        types.append("hbo")
-        rows.append(hemo * 1e-6 + rng.standard_normal(n) * 5e-8)
-        names.append(f"S{pair}_D{pair} hbr")
-        types.append("hbr")
-        rows.append(-0.4 * hemo * 1e-6 + rng.standard_normal(n) * 5e-8)
-    info = mne.create_info(names, sfreq, ch_types=types)
+        key = f"S{pair}_D{pair}"
+        source = np.array([0.03 * (pair - 1), 0.0, 0.0])
+        detector = source + np.array([0.03, 0.0, 0.0])
+        geometry[key] = (source, detector)
+        hemodynamic = 0.5 * np.sin(2 * np.pi * 0.05 * t) + 1.0  # positive, slow drift
+        for wavelength in (760, 850):
+            names.append(f"{key} {wavelength}")
+            rows.append(hemodynamic * 1e-3 + rng.standard_normal(n) * 1e-5)
+    info = mne.create_info(names, sfreq, ch_types="fnirs_cw_amplitude")
     raw = mne.io.RawArray(np.vstack(rows), info, verbose=False)
+    for ch in raw.info["chs"]:
+        key, wavelength = ch["ch_name"].split(" ")
+        source, detector = geometry[key]
+        ch["loc"][0:3] = (source + detector) / 2
+        ch["loc"][3:6] = source
+        ch["loc"][6:9] = detector
+        ch["loc"][9] = float(wavelength)  # MNE reads the wavelength from here
     return dataset_from_raw(raw)
