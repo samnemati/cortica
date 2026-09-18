@@ -12,6 +12,7 @@ import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -24,7 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import io
+from .. import io, viz
 from .param_form import ParamForm
 from .runner import run_in_background
 from .state import AppState
@@ -38,6 +39,7 @@ class MainWindow(QMainWindow):
         self.state = state or AppState()
         self._run_signals = None  # keeps a running worker's signals alive
         self._param_form: ParamForm | None = None
+        self._view_mode = "time"
         self.setWindowTitle("Cortica")
         self._build_ui()
         self._connect_state()
@@ -51,6 +53,9 @@ class MainWindow(QMainWindow):
         open_action = QAction("Open…", self)
         open_action.triggered.connect(self._open)
         toolbar.addAction(open_action)
+        export_action = QAction("Export report…", self)
+        export_action.triggered.connect(self._export_report)
+        toolbar.addAction(export_action)
 
         sample_menu = self.menuBar().addMenu("Sample")
         eeg_action = QAction("Load EEG sample", self)
@@ -68,9 +73,22 @@ class MainWindow(QMainWindow):
         self.library.itemDoubleClicked.connect(self._on_library_double_clicked)
         left_layout.addWidget(self.library)
 
+        center = QWidget()
+        center_layout = QVBoxLayout(center)
+        center_layout.setContentsMargins(0, 0, 0, 0)
+        view_row = QHBoxLayout()
+        view_row.setContentsMargins(8, 6, 8, 0)
+        view_row.addWidget(QLabel("View:"))
+        self.view_selector = QComboBox()
+        self.view_selector.addItems(["Time series", "Power spectrum"])
+        self.view_selector.currentTextChanged.connect(self._on_view_changed)
+        view_row.addWidget(self.view_selector)
+        view_row.addStretch(1)
+        center_layout.addLayout(view_row)
         self.plot = pg.PlotWidget()
         self.plot.setBackground("#0c141e")
         self.plot.showGrid(x=True, y=True, alpha=0.15)
+        center_layout.addWidget(self.plot)
 
         right = QWidget()
         right_layout = QVBoxLayout(right)
@@ -110,7 +128,7 @@ class MainWindow(QMainWindow):
 
         splitter = QSplitter()
         splitter.addWidget(left)
-        splitter.addWidget(self.plot)
+        splitter.addWidget(center)
         splitter.addWidget(right)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([250, 600, 320])
@@ -247,23 +265,67 @@ class MainWindow(QMainWindow):
         self.state.set_source(samples.fnirs_sample())
         self.statusBar().showMessage("Loaded synthetic fNIRS sample.")
 
+    # ---- report -------------------------------------------------------------
+    def _export_report(self) -> None:
+        if self.state.current() is None:
+            self.statusBar().showMessage("Load a recording first.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export report", "cortica-report.html", "HTML (*.html)"
+        )
+        if path:
+            self._export_report_to(path)
+
+    def _export_report_to(self, path: str) -> None:
+        from ..report import build_report
+
+        dataset = self.state.current()
+        if dataset is None:
+            self.statusBar().showMessage("Load a recording first.")
+            return
+        build_report(dataset, self.state.pipeline, path)
+        self.statusBar().showMessage(f"Report written to {path}")
+
     # ---- signal viewer ------------------------------------------------------
+    def _on_view_changed(self, text: str) -> None:
+        self._set_view("psd" if text == "Power spectrum" else "time")
+
+    def _set_view(self, mode: str) -> None:
+        self._view_mode = mode
+        self._replot()
+
     def _replot(self) -> None:
         self.plot.clear()
         ds = self.state.current()
         payload = getattr(ds, "payload", None) if ds else None
         if payload is None or not hasattr(payload, "get_data"):
             return
-        data = np.asarray(payload.get_data())
-        if data.ndim == 3:  # epochs (n_epochs, n_channels, n_times) -> show the average
-            data = data.mean(axis=0)
-        if data.ndim != 2:
-            return
-        times = getattr(payload, "times", np.arange(data.shape[1]))
+        if self._view_mode == "psd":
+            self._plot_spectrum(payload)
+        else:
+            self._plot_traces(payload)
+
+    def _plot_traces(self, payload) -> None:
+        self.plot.setLabel("bottom", "Time", units="s")
+        self.plot.setLabel("left", "Channels (stacked)")
+        times, data = viz.traces(payload)
         n = min(len(data), 6)
         for i in range(n):
             channel = data[i]
             scale = channel.std() or 1.0
-            offset = (n - 1 - i)
-            y = channel / (4 * scale) + offset
+            y = channel / (4 * scale) + (n - 1 - i)
             self.plot.plot(times, y, pen=pg.mkPen(_TRACE_COLORS[i % len(_TRACE_COLORS)], width=1))
+
+    def _plot_spectrum(self, payload) -> None:
+        self.plot.setLabel("bottom", "Frequency", units="Hz")
+        self.plot.setLabel("left", "Power (dB)")
+        try:
+            freqs, psds = viz.spectrum(payload, fmax=45.0)
+        except Exception as exc:
+            self.statusBar().showMessage(f"Spectrum unavailable: {exc}")
+            return
+        n = min(len(psds), 6)
+        for i in range(n):
+            power_db = 10 * np.log10(np.maximum(psds[i], 1e-30))
+            pen = pg.mkPen(_TRACE_COLORS[i % len(_TRACE_COLORS)], width=1)
+            self.plot.plot(freqs, power_db, pen=pen)

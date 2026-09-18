@@ -140,6 +140,31 @@ def test_viewer_handles_an_evoked_result(qtbot):
     assert w.state.result.payload.get_data().ndim == 2
 
 
+def test_time_series_is_the_default_view(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    assert w._view_mode == "time"
+
+
+def test_switching_to_power_spectrum_view_replots(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.view_selector.setCurrentText("Power spectrum")
+    assert w._view_mode == "psd"
+
+
+def test_export_report_writes_html(qtbot, tmp_path):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("bandpass_filter")
+    out = tmp_path / "report.html"
+    w._export_report_to(str(out))
+    assert out.exists()
+    assert "Band-pass filter" in out.read_text()
+
+
 def test_cli_no_command_launches_gui(monkeypatch):
     import cortica.gui.app as app_mod
     from cortica.cli import main

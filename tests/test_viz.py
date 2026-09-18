@@ -1,0 +1,44 @@
+"""Tests for viz — pure data-prep for the signal views (no Qt).
+
+Keeping this logic out of the widgets means it runs in CI without a Qt binding and
+the plotting code stays thin.
+"""
+import numpy as np
+import pytest
+
+mne = pytest.importorskip("mne")
+
+from cortica.samples import eeg_sample  # noqa: E402
+from cortica.steps.epoch import FixedLengthEpochs  # noqa: E402
+from cortica.viz import spectrum, traces  # noqa: E402
+
+
+def test_traces_returns_times_and_2d_data_for_raw():
+    times, data = traces(eeg_sample().payload)
+    assert data.ndim == 2
+    assert len(times) == data.shape[1]
+
+
+def test_traces_averages_epochs_to_2d():
+    epochs = FixedLengthEpochs().apply(eeg_sample(), {"duration": 1.0})
+    times, data = traces(epochs.payload)
+    assert data.ndim == 2  # epochs collapsed to their mean
+
+
+def test_spectrum_returns_freqs_and_power_per_channel():
+    freqs, psds = spectrum(eeg_sample().payload, fmax=40.0)
+    assert freqs.ndim == 1
+    assert psds.ndim == 2
+    assert psds.shape[1] == len(freqs)
+    assert freqs[0] >= 0
+
+
+def test_spectrum_shows_the_alpha_peak():
+    # the EEG sample has a 10 Hz alpha rhythm; 10 Hz power must exceed 30 Hz power
+    freqs, psds = spectrum(eeg_sample().payload, fmax=40.0)
+    mean_power = psds.mean(axis=0)
+
+    def power_at(hz):
+        return mean_power[np.argmin(np.abs(freqs - hz))]
+
+    assert power_at(10) > power_at(30)
