@@ -21,6 +21,11 @@ def test_eeg_sample_carries_stimulus_events_for_epoching():
     assert "target" in set(annotations.description)
 
 
+def test_eeg_sample_has_an_electrode_montage_for_head_maps():
+    ds = eeg_sample()
+    assert ds.payload.get_montage() is not None
+
+
 def test_fnirs_sample_is_detected_as_fnirs():
     ds = fnirs_sample()
     assert ds.modality == "fnirs"

@@ -10,7 +10,7 @@ mne = pytest.importorskip("mne")
 
 from cortica.samples import eeg_sample  # noqa: E402
 from cortica.steps.epoch import FixedLengthEpochs  # noqa: E402
-from cortica.viz import spectrum, traces  # noqa: E402
+from cortica.viz import BANDS, band_power, spectrum, traces  # noqa: E402
 
 
 def test_traces_returns_times_and_2d_data_for_raw():
@@ -42,3 +42,18 @@ def test_spectrum_shows_the_alpha_peak():
         return mean_power[np.argmin(np.abs(freqs - hz))]
 
     assert power_at(10) > power_at(30)
+
+
+def test_bands_are_the_standard_five():
+    assert set(BANDS) == {"Delta", "Theta", "Alpha", "Beta", "Gamma"}
+
+
+def test_band_power_returns_one_value_per_channel():
+    ds = eeg_sample()
+    power = band_power(ds.payload, "Alpha")
+    assert power.shape == (ds.meta["n_channels"],)
+
+
+def test_alpha_band_power_exceeds_gamma_for_the_sample():
+    ds = eeg_sample()
+    assert band_power(ds.payload, "Alpha").mean() > band_power(ds.payload, "Gamma").mean()

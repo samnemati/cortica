@@ -154,6 +154,31 @@ def test_switching_to_power_spectrum_view_replots(qtbot):
     assert w._view_mode == "psd"
 
 
+def test_topography_is_a_view_option(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.view_selector.setCurrentText("Topography")
+    assert w._view_mode == "topo"
+
+
+def test_topomap_renders_for_a_sample_with_a_montage(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w._set_view("topo")  # must render the head map without raising
+    assert w.band_selector.count() == 5  # delta/theta/alpha/beta/gamma
+
+
+def test_changing_the_band_updates_state(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w._set_view("topo")
+    w.band_selector.setCurrentText("Beta")
+    assert w._band == "Beta"
+
+
 def test_export_report_writes_html(qtbot, tmp_path):
     w = MainWindow()
     qtbot.addWidget(w)

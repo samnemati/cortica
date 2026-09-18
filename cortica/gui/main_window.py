@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMainWindow,
     QPushButton,
+    QSlider,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -40,6 +41,8 @@ class MainWindow(QMainWindow):
         self._run_signals = None  # keeps a running worker's signals alive
         self._param_form: ParamForm | None = None
         self._view_mode = "time"
+        self._band = "Alpha"
+        self._topo_threshold = 1.0
         self.setWindowTitle("Cortica")
         self._build_ui()
         self._connect_state()
@@ -79,6 +82,9 @@ class MainWindow(QMainWindow):
         self.library.itemDoubleClicked.connect(self._on_library_double_clicked)
         left_layout.addWidget(self.library)
 
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+        from matplotlib.figure import Figure
+
         center = QWidget()
         center_layout = QVBoxLayout(center)
         center_layout.setContentsMargins(0, 0, 0, 0)
@@ -86,15 +92,37 @@ class MainWindow(QMainWindow):
         view_row.setContentsMargins(8, 6, 8, 0)
         view_row.addWidget(QLabel("View:"))
         self.view_selector = QComboBox()
-        self.view_selector.addItems(["Time series", "Power spectrum"])
+        self.view_selector.addItems(["Time series", "Power spectrum", "Topography"])
         self.view_selector.currentTextChanged.connect(self._on_view_changed)
         view_row.addWidget(self.view_selector)
+        # Topography-only controls (hidden unless the head-map view is active).
+        self.band_label = QLabel("Band:")
+        view_row.addWidget(self.band_label)
+        self.band_selector = QComboBox()
+        self.band_selector.addItems(list(viz.BANDS))
+        self.band_selector.setCurrentText(self._band)
+        self.band_selector.currentTextChanged.connect(self._on_band_changed)
+        view_row.addWidget(self.band_selector)
+        self.threshold_label = QLabel("Threshold:")
+        view_row.addWidget(self.threshold_label)
+        self.threshold_slider = QSlider(Qt.Orientation.Horizontal)
+        self.threshold_slider.setRange(10, 100)
+        self.threshold_slider.setValue(100)
+        self.threshold_slider.setFixedWidth(120)
+        self.threshold_slider.valueChanged.connect(self._on_threshold_changed)
+        view_row.addWidget(self.threshold_slider)
         view_row.addStretch(1)
         center_layout.addLayout(view_row)
+
         self.plot = pg.PlotWidget()
         self.plot.setBackground("#0c141e")
         self.plot.showGrid(x=True, y=True, alpha=0.15)
         center_layout.addWidget(self.plot)
+        self._topo_fig = Figure(figsize=(4, 4))
+        self._topo_canvas = FigureCanvasQTAgg(self._topo_fig)
+        center_layout.addWidget(self._topo_canvas)
+        self._topo_canvas.hide()
+        self._set_topo_controls_visible(False)
 
         right = QWidget()
         right_layout = QVBoxLayout(right)
@@ -296,22 +324,73 @@ class MainWindow(QMainWindow):
 
     # ---- signal viewer ------------------------------------------------------
     def _on_view_changed(self, text: str) -> None:
-        self._set_view("psd" if text == "Power spectrum" else "time")
+        mode = {"Power spectrum": "psd", "Topography": "topo"}.get(text, "time")
+        self._set_view(mode)
 
     def _set_view(self, mode: str) -> None:
         self._view_mode = mode
         self._replot()
 
+    def _on_band_changed(self, band: str) -> None:
+        self._band = band
+        if self._view_mode == "topo":
+            self._replot()
+
+    def _on_threshold_changed(self, value: int) -> None:
+        self._topo_threshold = value / 100.0
+        if self._view_mode == "topo":
+            self._replot()
+
+    def _set_topo_controls_visible(self, show: bool) -> None:
+        for widget in (self.band_label, self.band_selector,
+                       self.threshold_label, self.threshold_slider):
+            widget.setVisible(show)
+
     def _replot(self) -> None:
-        self.plot.clear()
         ds = self.state.current()
         payload = getattr(ds, "payload", None) if ds else None
+        is_topo = self._view_mode == "topo"
+        self.plot.setVisible(not is_topo)
+        self._topo_canvas.setVisible(is_topo)
+        self._set_topo_controls_visible(is_topo)
+        if is_topo:
+            self._plot_topomap(payload)
+            return
+        self.plot.clear()
         if payload is None or not hasattr(payload, "get_data"):
             return
         if self._view_mode == "psd":
             self._plot_spectrum(payload)
         else:
             self._plot_traces(payload)
+
+    def _plot_topomap(self, payload) -> None:
+        self._topo_fig.clear()
+        ax = self._topo_fig.add_subplot(111)
+        ax.set_axis_off()
+        if payload is None or not hasattr(payload, "get_data"):
+            ax.text(0.5, 0.5, "Load a recording to see a head map.", ha="center", va="center")
+            self._topo_canvas.draw_idle()
+            return
+        try:
+            import mne
+
+            power = viz.band_power(payload, self._band)
+            vmax = self._topo_threshold * float(np.nanmax(power)) if power.size else None
+            mne.viz.plot_topomap(
+                power, payload.info, axes=ax, show=False, cmap="RdBu_r", vlim=(None, vmax)
+            )
+            ax.set_title(f"{self._band} power")
+        except Exception as exc:
+            ax.clear()
+            ax.set_axis_off()
+            ax.text(
+                0.5, 0.5,
+                "Head map needs electrode positions.\nAdd a “Set montage” step.",
+                ha="center", va="center",
+            )
+            self.statusBar().showMessage(f"Head map: {exc}")
+        self._topo_canvas.draw_idle()
 
     def _plot_traces(self, payload) -> None:
         self.plot.setLabel("bottom", "Time", units="s")

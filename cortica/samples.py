@@ -31,6 +31,9 @@ def eeg_sample(seconds: float = 10.0, sfreq: float = 200.0) -> Dataset:
     onsets = np.arange(1.0, seconds - 0.5, 1.0)
     labels = ["target" if i % 4 == 2 else "standard" for i in range(len(onsets))]
     raw.set_annotations(mne.Annotations(onsets, np.zeros(len(onsets)), labels))
+    # 10-05 positions (the channel names above are 10-20 sites) so head maps work
+    # on the sample out of the box.
+    raw.set_montage("colin27_1005", match_case=False, on_missing="ignore", verbose=False)
     return dataset_from_raw(raw)
 
 

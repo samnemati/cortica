@@ -33,3 +33,21 @@ def spectrum(payload, fmax=None):
     if psds.ndim == 3:  # epochs (n_epochs, n_channels, n_freqs)
         psds = psds.mean(axis=0)
     return np.asarray(freqs), psds
+
+
+#: Standard EEG frequency bands (Hz).
+BANDS = {
+    "Delta": (1.0, 4.0),
+    "Theta": (4.0, 8.0),
+    "Alpha": (8.0, 12.0),
+    "Beta": (12.0, 30.0),
+    "Gamma": (30.0, 45.0),
+}
+
+
+def band_power(payload, band):
+    """Return mean power in a named band (from :data:`BANDS`) per channel."""
+    fmin, fmax = BANDS[band]
+    freqs, psds = spectrum(payload, fmax=fmax + 5.0)
+    mask = (freqs >= fmin) & (freqs <= fmax)
+    return psds[:, mask].mean(axis=1)
