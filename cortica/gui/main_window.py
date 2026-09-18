@@ -50,6 +50,15 @@ class MainWindow(QMainWindow):
     # ---- construction -------------------------------------------------------
     def _build_ui(self) -> None:
         toolbar = self.addToolBar("Main")
+        toolbar.setMovable(False)
+        # Sample loaders first, right in the window toolbar, so they're easy to find.
+        eeg_action = QAction("Load EEG sample", self)
+        eeg_action.triggered.connect(self._load_eeg_sample)
+        toolbar.addAction(eeg_action)
+        fnirs_action = QAction("Load fNIRS sample", self)
+        fnirs_action.triggered.connect(self._load_fnirs_sample)
+        toolbar.addAction(fnirs_action)
+        toolbar.addSeparator()
         open_action = QAction("Open…", self)
         open_action.triggered.connect(self._open)
         toolbar.addAction(open_action)
@@ -57,12 +66,9 @@ class MainWindow(QMainWindow):
         export_action.triggered.connect(self._export_report)
         toolbar.addAction(export_action)
 
+        # Keep the same actions in a menu too (native menu bar on macOS/Linux).
         sample_menu = self.menuBar().addMenu("Sample")
-        eeg_action = QAction("Load EEG sample", self)
-        eeg_action.triggered.connect(self._load_eeg_sample)
         sample_menu.addAction(eeg_action)
-        fnirs_action = QAction("Load fNIRS sample", self)
-        fnirs_action.triggered.connect(self._load_fnirs_sample)
         sample_menu.addAction(fnirs_action)
 
         left = QWidget()
@@ -133,7 +139,9 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([250, 600, 320])
         self.setCentralWidget(splitter)
-        self.statusBar().showMessage("Open a recording to begin.")
+        self.statusBar().showMessage(
+            "Click “Load EEG sample” or “Load fNIRS sample” to try it — or Open your own recording."
+        )
 
     def _connect_state(self) -> None:
         self.state.sourceChanged.connect(self._refresh_library)
