@@ -55,6 +55,7 @@ def _figures(dataset) -> list:
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+        import mne
         import numpy as np
 
         from .. import viz
@@ -84,14 +85,18 @@ def _figures(dataset) -> list:
     except Exception:
         pass
     try:
-        import mne
-
         if getattr(payload, "get_montage", lambda: None)() is not None:
             power = viz.band_power(payload, "Alpha")
             fig, ax = plt.subplots(figsize=(3.2, 3.2))
             mne.viz.plot_topomap(power, payload.info, axes=ax, show=False, cmap="RdBu_r")
             ax.set_title("Alpha power")
             figures.append(("Alpha head map", encode(fig)))
+    except Exception:
+        pass
+    try:
+        if isinstance(payload, mne.Evoked):
+            fig = payload.plot(gfp=True, show=False)
+            figures.append(("Evoked response (with GFP)", encode(fig)))
     except Exception:
         pass
     return figures

@@ -45,6 +45,21 @@ def test_build_report_embeds_a_figure(tmp_path):
     assert "data:image/png;base64," in out.read_text()  # an embedded figure
 
 
+def test_build_report_shows_evoked_with_gfp(tmp_path):
+    import numpy as np
+
+    from cortica.io import dataset_from_raw
+    from cortica.steps.epoch import Average, FixedLengthEpochs
+
+    info = mne.create_info(["EEG 1", "EEG 2", "EEG 3"], 200.0, ch_types="eeg")
+    raw = mne.io.RawArray(np.random.RandomState(0).randn(3, 2000) * 1e-6, info, verbose=False)
+    epochs = FixedLengthEpochs().apply(dataset_from_raw(raw), {"duration": 0.5})
+    evoked = Average().apply(epochs, {})
+    out = tmp_path / "report.html"
+    build_report(evoked, Pipeline("eeg"), str(out))
+    assert "Evoked response" in out.read_text()
+
+
 def test_build_report_escapes_html_in_values(tmp_path):
     pipe = Pipeline("eeg").add("bandpass_filter", {"l_freq": "<script>", "h_freq": 20.0})
     out = tmp_path / "report.html"
