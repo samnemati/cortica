@@ -65,6 +65,7 @@ class MainWindow(QMainWindow):
         self._decode_classifier = "logreg"
         self._source_result = None
         self._src_signals = None
+        self._last_preview_path = None
         self.setWindowTitle("Cortica")
         self._build_ui()
         self._connect_state()
@@ -87,6 +88,9 @@ class MainWindow(QMainWindow):
         open_action = QAction("Open…", self)
         open_action.triggered.connect(self._open)
         toolbar.addAction(open_action)
+        preview_action = QAction("Preview report", self)
+        preview_action.triggered.connect(self._preview_report)
+        toolbar.addAction(preview_action)
         export_action = QAction("Export report…", self)
         export_action.triggered.connect(self._export_report)
         toolbar.addAction(export_action)
@@ -421,6 +425,26 @@ class MainWindow(QMainWindow):
             return
         build_report(dataset, self.state.pipeline, path)
         self.statusBar().showMessage(f"Report written to {path}")
+
+    def _preview_report(self) -> None:
+        import tempfile
+        import webbrowser
+        from pathlib import Path
+
+        from ..report import build_report
+
+        dataset = self.state.current()
+        if dataset is None:
+            self.statusBar().showMessage("Load a recording first.")
+            return
+        tmp = tempfile.NamedTemporaryFile(
+            prefix="cortica-report-", suffix=".html", delete=False
+        )
+        tmp.close()
+        build_report(dataset, self.state.pipeline, tmp.name)
+        self._last_preview_path = tmp.name
+        webbrowser.open(Path(tmp.name).as_uri())
+        self.statusBar().showMessage("Opened report preview in your browser.")
 
     # ---- ICA ----------------------------------------------------------------
     def _fit_ica(self) -> None:

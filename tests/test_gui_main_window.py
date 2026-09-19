@@ -355,6 +355,22 @@ def test_export_report_writes_html(qtbot, tmp_path):
     assert "Band-pass filter" in out.read_text()
 
 
+def test_preview_report_builds_and_opens_in_browser(qtbot, monkeypatch):
+    import webbrowser
+    from pathlib import Path
+
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("bandpass_filter")
+    opened = []
+    monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url) or True)
+    w._preview_report()
+    assert opened  # the browser was invoked
+    assert Path(w._last_preview_path).exists()
+    assert "Band-pass filter" in Path(w._last_preview_path).read_text()
+
+
 def test_cli_no_command_launches_gui(monkeypatch):
     import cortica.gui.app as app_mod
     from cortica.cli import main
