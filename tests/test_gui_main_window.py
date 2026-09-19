@@ -179,6 +179,28 @@ def test_changing_the_band_updates_state(qtbot):
     assert w._band == "Beta"
 
 
+def test_channel_list_populates_all_checked_on_load(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    assert w.channel_list.count() == 10  # the EEG sample has 10 channels
+    assert all(
+        w.channel_list.item(i).checkState() == Qt.CheckState.Checked
+        for i in range(w.channel_list.count())
+    )
+
+
+def test_unchecking_a_channel_removes_it_from_picks(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    first = w.channel_list.item(0).text()
+    w.channel_list.item(0).setCheckState(Qt.CheckState.Unchecked)
+    picks = w._current_picks()
+    assert first not in picks
+    assert len(picks) == 9
+
+
 def test_export_report_writes_html(qtbot, tmp_path):
     w = MainWindow()
     qtbot.addWidget(w)

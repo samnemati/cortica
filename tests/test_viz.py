@@ -57,3 +57,18 @@ def test_band_power_returns_one_value_per_channel():
 def test_alpha_band_power_exceeds_gamma_for_the_sample():
     ds = eeg_sample()
     assert band_power(ds.payload, "Alpha").mean() > band_power(ds.payload, "Gamma").mean()
+
+
+def test_traces_can_subset_channels():
+    times, data = traces(eeg_sample().payload, picks=["O1", "O2"])
+    assert data.shape[0] == 2
+
+
+def test_spectrum_can_subset_channels():
+    freqs, psds = spectrum(eeg_sample().payload, fmax=40.0, picks=["O1", "O2"])
+    assert psds.shape[0] == 2
+
+
+def test_band_power_can_subset_channels():
+    power = band_power(eeg_sample().payload, "Alpha", picks=["O1", "O2"])
+    assert power.shape == (2,)

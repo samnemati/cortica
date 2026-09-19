@@ -81,6 +81,10 @@ class MainWindow(QMainWindow):
         self.library = QListWidget()
         self.library.itemDoubleClicked.connect(self._on_library_double_clicked)
         left_layout.addWidget(self.library)
+        left_layout.addWidget(QLabel("Channels"))
+        self.channel_list = QListWidget()
+        self.channel_list.itemChanged.connect(self._on_channels_changed)
+        left_layout.addWidget(self.channel_list)
 
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
         from matplotlib.figure import Figure
@@ -173,6 +177,7 @@ class MainWindow(QMainWindow):
 
     def _connect_state(self) -> None:
         self.state.sourceChanged.connect(self._refresh_library)
+        self.state.sourceChanged.connect(self._refresh_channels)
         self.state.sourceChanged.connect(self._replot)
         self.state.pipelineChanged.connect(self._refresh_pipeline)
         self.state.resultChanged.connect(self._replot)
@@ -195,6 +200,29 @@ class MainWindow(QMainWindow):
     def _add_from_item(self, item: QListWidgetItem) -> None:
         self.state.add_step(item.data(Qt.ItemDataRole.UserRole))
         self.statusBar().showMessage(f"Added {item.text()}")
+
+    # ---- channel selection --------------------------------------------------
+    def _refresh_channels(self) -> None:
+        self.channel_list.blockSignals(True)
+        self.channel_list.clear()
+        ds = self.state.current()
+        payload = getattr(ds, "payload", None) if ds else None
+        for name in getattr(payload, "ch_names", []):
+            item = QListWidgetItem(name)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked)
+            self.channel_list.addItem(item)
+        self.channel_list.blockSignals(False)
+
+    def _current_picks(self) -> list:
+        return [
+            self.channel_list.item(i).text()
+            for i in range(self.channel_list.count())
+            if self.channel_list.item(i).checkState() == Qt.CheckState.Checked
+        ]
+
+    def _on_channels_changed(self, item) -> None:
+        self._replot()
 
     # ---- pipeline panel -----------------------------------------------------
     def _refresh_pipeline(self) -> None:
@@ -372,13 +400,21 @@ class MainWindow(QMainWindow):
             ax.text(0.5, 0.5, "Load a recording to see a head map.", ha="center", va="center")
             self._topo_canvas.draw_idle()
             return
+        picks = self._current_picks()
+        if not picks:
+            ax.text(0.5, 0.5, "Select at least one channel.", ha="center", va="center")
+            self._topo_canvas.draw_idle()
+            return
         try:
             import mne
 
-            power = viz.band_power(payload, self._band)
+            names = list(payload.ch_names)
+            idx = [i for i, name in enumerate(names) if name in picks]
+            power = viz.band_power(payload, self._band)[idx]
             vmax = self._topo_threshold * float(np.nanmax(power)) if power.size else None
+            info = mne.pick_info(payload.info, idx)
             mne.viz.plot_topomap(
-                power, payload.info, axes=ax, show=False, cmap="RdBu_r", vlim=(None, vmax)
+                power, info, axes=ax, show=False, cmap="RdBu_r", vlim=(None, vmax)
             )
             ax.set_title(f"{self._band} power")
         except Exception as exc:
@@ -393,9 +429,12 @@ class MainWindow(QMainWindow):
         self._topo_canvas.draw_idle()
 
     def _plot_traces(self, payload) -> None:
+        picks = self._current_picks()
+        if not picks:
+            return
         self.plot.setLabel("bottom", "Time", units="s")
         self.plot.setLabel("left", "Channels (stacked)")
-        times, data = viz.traces(payload)
+        times, data = viz.traces(payload, picks=picks)
         n = min(len(data), 6)
         for i in range(n):
             channel = data[i]
@@ -404,10 +443,13 @@ class MainWindow(QMainWindow):
             self.plot.plot(times, y, pen=pg.mkPen(_TRACE_COLORS[i % len(_TRACE_COLORS)], width=1))
 
     def _plot_spectrum(self, payload) -> None:
+        picks = self._current_picks()
+        if not picks:
+            return
         self.plot.setLabel("bottom", "Frequency", units="Hz")
         self.plot.setLabel("left", "Power (dB)")
         try:
-            freqs, psds = viz.spectrum(payload, fmax=45.0)
+            freqs, psds = viz.spectrum(payload, fmax=45.0, picks=picks)
         except Exception as exc:
             self.statusBar().showMessage(f"Spectrum unavailable: {exc}")
             return
