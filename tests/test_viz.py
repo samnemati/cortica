@@ -10,7 +10,15 @@ mne = pytest.importorskip("mne")
 
 from cortica.samples import eeg_sample  # noqa: E402
 from cortica.steps.epoch import FixedLengthEpochs  # noqa: E402
-from cortica.viz import BANDS, band_power, spectrum, time_frequency, traces  # noqa: E402
+from cortica.viz import (  # noqa: E402
+    BANDS,
+    CONNECTIVITY_METHODS,
+    band_power,
+    connectivity,
+    spectrum,
+    time_frequency,
+    traces,
+)
 
 
 def test_traces_returns_times_and_2d_data_for_raw():
@@ -85,3 +93,14 @@ def test_time_frequency_supports_multitaper():
         eeg_sample().payload, picks=["O1"], fmax=20.0, method="multitaper"
     )
     assert power.shape == (len(freqs), len(times))
+
+
+def test_connectivity_methods_include_plv():
+    assert "PLV" in CONNECTIVITY_METHODS
+
+
+def test_connectivity_returns_a_channel_by_channel_matrix():
+    epochs = FixedLengthEpochs().apply(eeg_sample(), {"duration": 1.0})
+    matrix, names = connectivity(epochs.payload, method="plv", band="Alpha")
+    assert len(names) == 10
+    assert matrix.shape == (10, 10)

@@ -34,6 +34,7 @@ dependencies = [
   "PyYAML",
   "mne>=1.6",
   "mne-nirs",
+  "mne-connectivity",
   "matplotlib",
 ]
 

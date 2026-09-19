@@ -71,3 +71,25 @@ def time_frequency(payload, picks=None, fmax=40.0, method="morlet"):
         power = power.mean(axis=0)
     power = power.mean(axis=0)  # average across channels -> (n_freqs, n_times)
     return np.asarray(tfr.times), np.asarray(tfr.freqs), power
+
+
+#: Connectivity measures (display label -> mne-connectivity method name).
+CONNECTIVITY_METHODS = {"PLV": "plv", "Coherence": "coh", "wPLI": "wpli"}
+
+
+def connectivity(payload, method="plv", band="Alpha"):
+    """Return ``(matrix, ch_names)`` — a symmetric channel-by-channel connectivity
+    matrix for a frequency band. ``payload`` must be Epochs.
+    """
+    from mne_connectivity import spectral_connectivity_epochs
+
+    fmin, fmax = BANDS[band]
+    con = spectral_connectivity_epochs(
+        payload, method=method, mode="multitaper", fmin=fmin, fmax=fmax,
+        faverage=True, verbose=False,
+    )
+    matrix = np.asarray(con.get_data(output="dense"))
+    if matrix.ndim == 3:
+        matrix = matrix[:, :, 0]
+    matrix = matrix + matrix.T  # returned lower-triangular; make it symmetric
+    return matrix, list(payload.ch_names)

@@ -44,6 +44,7 @@ class MainWindow(QMainWindow):
         self._band = "Alpha"
         self._topo_threshold = 1.0
         self._tfr_method = "morlet"
+        self._conn_method = "plv"
         self.setWindowTitle("Cortica")
         self._build_ui()
         self._connect_state()
@@ -101,7 +102,7 @@ class MainWindow(QMainWindow):
         view_row.addWidget(QLabel("View:"))
         self.view_selector = QComboBox()
         self.view_selector.addItems(
-            ["Time series", "Power spectrum", "Topography", "Time-frequency"]
+            ["Time series", "Power spectrum", "Topography", "Time-frequency", "Connectivity"]
         )
         self.view_selector.currentTextChanged.connect(self._on_view_changed)
         view_row.addWidget(self.view_selector)
@@ -127,6 +128,12 @@ class MainWindow(QMainWindow):
         self.tfr_method_selector.addItems(["Morlet", "Multitaper"])
         self.tfr_method_selector.currentTextChanged.connect(self._on_tfr_method_changed)
         view_row.addWidget(self.tfr_method_selector)
+        self.conn_method_label = QLabel("Measure:")
+        view_row.addWidget(self.conn_method_label)
+        self.conn_method_selector = QComboBox()
+        self.conn_method_selector.addItems(list(viz.CONNECTIVITY_METHODS))
+        self.conn_method_selector.currentTextChanged.connect(self._on_conn_method_changed)
+        view_row.addWidget(self.conn_method_selector)
         view_row.addStretch(1)
         center_layout.addLayout(view_row)
 
@@ -138,8 +145,7 @@ class MainWindow(QMainWindow):
         self._mpl_canvas = FigureCanvasQTAgg(self._mpl_fig)
         center_layout.addWidget(self._mpl_canvas)
         self._mpl_canvas.hide()
-        self._set_topo_controls_visible(False)
-        self._set_tfr_controls_visible(False)
+        self._update_view_controls()
 
         right = QWidget()
         right_layout = QVBoxLayout(right)
@@ -386,9 +392,12 @@ class MainWindow(QMainWindow):
 
     # ---- signal viewer ------------------------------------------------------
     def _on_view_changed(self, text: str) -> None:
-        mode = {"Power spectrum": "psd", "Topography": "topo", "Time-frequency": "tfr"}.get(
-            text, "time"
-        )
+        mode = {
+            "Power spectrum": "psd",
+            "Topography": "topo",
+            "Time-frequency": "tfr",
+            "Connectivity": "conn",
+        }.get(text, "time")
         self._set_view(mode)
 
     def _set_view(self, mode: str) -> None:
@@ -405,33 +414,42 @@ class MainWindow(QMainWindow):
         if self._view_mode == "topo":
             self._replot()
 
-    def _set_topo_controls_visible(self, show: bool) -> None:
-        for widget in (self.band_label, self.band_selector,
-                       self.threshold_label, self.threshold_slider):
-            widget.setVisible(show)
-
     def _on_tfr_method_changed(self, text: str) -> None:
         self._tfr_method = text.lower()
         if self._view_mode == "tfr":
             self._replot()
 
-    def _set_tfr_controls_visible(self, show: bool) -> None:
-        self.tfr_method_label.setVisible(show)
-        self.tfr_method_selector.setVisible(show)
+    def _on_conn_method_changed(self, text: str) -> None:
+        self._conn_method = viz.CONNECTIVITY_METHODS.get(text, "plv")
+        if self._view_mode == "conn":
+            self._replot()
+
+    def _update_view_controls(self) -> None:
+        view = self._view_mode
+        for widget in (self.band_label, self.band_selector):
+            widget.setVisible(view in ("topo", "conn"))
+        for widget in (self.threshold_label, self.threshold_slider):
+            widget.setVisible(view == "topo")
+        for widget in (self.tfr_method_label, self.tfr_method_selector):
+            widget.setVisible(view == "tfr")
+        for widget in (self.conn_method_label, self.conn_method_selector):
+            widget.setVisible(view == "conn")
 
     def _replot(self) -> None:
         ds = self.state.current()
         payload = getattr(ds, "payload", None) if ds else None
-        is_mpl = self._view_mode in ("topo", "tfr")
+        is_mpl = self._view_mode in ("topo", "tfr", "conn")
         self.plot.setVisible(not is_mpl)
         self._mpl_canvas.setVisible(is_mpl)
-        self._set_topo_controls_visible(self._view_mode == "topo")
-        self._set_tfr_controls_visible(self._view_mode == "tfr")
+        self._update_view_controls()
         if self._view_mode == "topo":
             self._plot_topomap(payload)
             return
         if self._view_mode == "tfr":
             self._plot_tfr(payload)
+            return
+        if self._view_mode == "conn":
+            self._plot_connectivity(payload)
             return
         self.plot.clear()
         if payload is None or not hasattr(payload, "get_data"):
@@ -508,6 +526,36 @@ class MainWindow(QMainWindow):
             ax.set_axis_off()
             ax.text(0.5, 0.5, "Time-frequency unavailable.", ha="center", va="center")
             self.statusBar().showMessage(f"Time-frequency: {exc}")
+        self._mpl_canvas.draw_idle()
+
+    def _plot_connectivity(self, payload) -> None:
+        import mne
+
+        self._mpl_fig.clear()
+        ax = self._mpl_fig.add_subplot(111)
+        if not isinstance(payload, mne.BaseEpochs):
+            ax.set_axis_off()
+            ax.text(
+                0.5, 0.5,
+                "Connectivity needs epochs.\nAdd an Epochs step and Run.",
+                ha="center", va="center",
+            )
+            self._mpl_canvas.draw_idle()
+            return
+        try:
+            matrix, names = viz.connectivity(payload, method=self._conn_method, band=self._band)
+            image = ax.imshow(matrix, cmap="magma", vmin=0, vmax=1)
+            ax.set_xticks(range(len(names)))
+            ax.set_yticks(range(len(names)))
+            ax.set_xticklabels(names, rotation=90, fontsize=7)
+            ax.set_yticklabels(names, fontsize=7)
+            ax.set_title(f"{self._conn_method.upper()} — {self._band}")
+            self._mpl_fig.colorbar(image, ax=ax)
+        except Exception as exc:
+            ax.clear()
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "Connectivity unavailable.", ha="center", va="center")
+            self.statusBar().showMessage(f"Connectivity: {exc}")
         self._mpl_canvas.draw_idle()
 
     def _plot_traces(self, payload) -> None:

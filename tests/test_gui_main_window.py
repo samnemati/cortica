@@ -209,6 +209,24 @@ def test_time_frequency_view_renders(qtbot):
     assert w._view_mode == "tfr"
 
 
+def test_connectivity_is_a_view_option(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.view_selector.setCurrentText("Connectivity")  # raw data -> shows "needs epochs"
+    assert w._view_mode == "conn"
+
+
+def test_connectivity_renders_with_epochs(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_fixed", {"duration": 1.0})
+    w.state.run_sync()  # result is Epochs
+    w._set_view("conn")  # computes the matrix + renders without raising
+    assert w._view_mode == "conn"
+
+
 def test_apply_ica_choice_adds_an_ica_step(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)
