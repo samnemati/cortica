@@ -33,6 +33,20 @@ from .state import AppState
 
 _TRACE_COLORS = ["#5ac8fa", "#f5a623", "#5fd3a6", "#f76d8e", "#9b8cff", "#3fc1c9"]
 
+#: View dropdown labels paired with their internal mode keys (one source of truth
+#: for both directions, so the dropdown always reflects the active view).
+_VIEWS = [
+    ("Time series", "time"),
+    ("Power spectrum", "psd"),
+    ("Topography", "topo"),
+    ("Time-frequency", "tfr"),
+    ("Connectivity", "conn"),
+    ("Decoding", "decoding"),
+    ("Statistics", "stats"),
+    ("Comparison", "compare"),
+    ("Source", "source"),
+]
+
 
 class MainWindow(QMainWindow):
     def __init__(self, state: AppState | None = None, parent=None):
@@ -110,12 +124,7 @@ class MainWindow(QMainWindow):
         view_row.setContentsMargins(8, 6, 8, 0)
         view_row.addWidget(QLabel("View:"))
         self.view_selector = QComboBox()
-        self.view_selector.addItems(
-            [
-                "Time series", "Power spectrum", "Topography", "Time-frequency",
-                "Connectivity", "Decoding", "Statistics", "Comparison",
-            ]
-        )
+        self.view_selector.addItems([label for label, _ in _VIEWS])
         self.view_selector.currentTextChanged.connect(self._on_view_changed)
         view_row.addWidget(self.view_selector)
         # Topography-only controls (hidden unless the head-map view is active).
@@ -462,19 +471,16 @@ class MainWindow(QMainWindow):
 
     # ---- signal viewer ------------------------------------------------------
     def _on_view_changed(self, text: str) -> None:
-        mode = {
-            "Power spectrum": "psd",
-            "Topography": "topo",
-            "Time-frequency": "tfr",
-            "Connectivity": "conn",
-            "Decoding": "decoding",
-            "Statistics": "stats",
-            "Comparison": "compare",
-        }.get(text, "time")
-        self._set_view(mode)
+        self._set_view(dict(_VIEWS).get(text, "time"))
 
     def _set_view(self, mode: str) -> None:
         self._view_mode = mode
+        label = {m: lbl for lbl, m in _VIEWS}.get(mode)
+        if label is not None and self.view_selector.currentText() != label:
+            # Keep the dropdown in step without re-triggering _on_view_changed.
+            self.view_selector.blockSignals(True)
+            self.view_selector.setCurrentText(label)
+            self.view_selector.blockSignals(False)
         self._replot()
 
     def _on_band_changed(self, band: str) -> None:

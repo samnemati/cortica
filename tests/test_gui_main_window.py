@@ -318,6 +318,21 @@ def test_source_view_renders_a_result(qtbot):
     assert w._source_result[0][0] == "superiorparietal-lh"
 
 
+def test_set_view_syncs_the_view_dropdown(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w._set_view("topo")  # programmatic view change must keep the dropdown in step
+    assert w.view_selector.currentText() == "Topography"
+
+
+def test_action_driven_source_view_syncs_the_dropdown(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._on_sources_ready((["superiorparietal-lh"], [2.0]))  # opened via toolbar action
+    assert w.view_selector.currentText() == "Source"
+
+
 def test_apply_ica_choice_adds_an_ica_step(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)
