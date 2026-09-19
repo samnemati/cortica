@@ -237,6 +237,30 @@ def test_decoding_view_renders_with_multi_condition_epochs(qtbot):
     assert w._view_mode == "decoding"
 
 
+def test_decoding_temporal_generalization_mode_renders(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_events", {"tmin": -0.1, "tmax": 0.4})
+    w.state.run_sync()
+    w._set_view("decoding")
+    w.decode_mode_selector.setCurrentText("Temporal generalization")  # train×test heatmap
+    assert w._decode_mode == "generalization"
+
+
+def test_decoding_csp_mode_with_lda_classifier_renders(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_events", {"tmin": -0.1, "tmax": 0.4})
+    w.state.run_sync()
+    w._set_view("decoding")
+    w.classifier_selector.setCurrentText("LDA")
+    w.decode_mode_selector.setCurrentText("CSP (whole epoch)")
+    assert w._decode_mode == "csp"
+    assert w._decode_classifier == "lda"
+
+
 def test_statistics_view_renders_with_multi_condition_epochs(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)

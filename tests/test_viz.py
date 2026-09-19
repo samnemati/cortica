@@ -15,13 +15,16 @@ from cortica.steps.epoch import Average, EventEpochs, FixedLengthEpochs  # noqa:
 from cortica.viz import (  # noqa: E402
     BANDS,
     CONNECTIVITY_METHODS,
+    DECODE_CLASSIFIERS,
     band_power,
     cluster_test,
     condition_comparison,
     connectivity,
     decoding,
+    decoding_csp,
     source_localization,
     spectrum,
+    temporal_generalization,
     time_frequency,
     traces,
 )
@@ -119,6 +122,28 @@ def test_decoding_returns_accuracy_over_time():
     times, scores = decoding(epochs)
     assert scores.ndim == 1
     assert len(scores) == len(times)
+
+
+def test_decode_classifiers_offer_logreg_lda_svm():
+    assert set(DECODE_CLASSIFIERS.values()) == {"logreg", "lda", "svm"}
+
+
+def test_decoding_supports_choosing_the_classifier():
+    epochs = EventEpochs().apply(eeg_sample(), {"tmin": -0.1, "tmax": 0.4}).payload
+    times, scores = decoding(epochs, classifier="lda")
+    assert len(scores) == len(times)
+
+
+def test_temporal_generalization_returns_a_square_matrix():
+    epochs = EventEpochs().apply(eeg_sample(), {"tmin": -0.1, "tmax": 0.4}).payload
+    times, matrix = temporal_generalization(epochs)
+    assert matrix.shape == (len(times), len(times))
+
+
+def test_decoding_csp_returns_a_scalar_accuracy():
+    epochs = EventEpochs().apply(eeg_sample(), {"tmin": -0.1, "tmax": 0.4}).payload
+    acc = decoding_csp(epochs)
+    assert 0.0 <= acc <= 1.0
 
 
 def test_cluster_test_returns_condition_means_and_mask():

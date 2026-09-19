@@ -45,6 +45,8 @@ class MainWindow(QMainWindow):
         self._topo_threshold = 1.0
         self._tfr_method = "morlet"
         self._conn_method = "plv"
+        self._decode_mode = "time"
+        self._decode_classifier = "logreg"
         self._source_result = None
         self._src_signals = None
         self.setWindowTitle("Cortica")
@@ -142,6 +144,21 @@ class MainWindow(QMainWindow):
         self.conn_method_selector.addItems(list(viz.CONNECTIVITY_METHODS))
         self.conn_method_selector.currentTextChanged.connect(self._on_conn_method_changed)
         view_row.addWidget(self.conn_method_selector)
+        # Decoding-only controls (hidden unless the decoding view is active).
+        self.decode_mode_label = QLabel("Mode:")
+        view_row.addWidget(self.decode_mode_label)
+        self.decode_mode_selector = QComboBox()
+        self.decode_mode_selector.addItems(
+            ["Over time", "Temporal generalization", "CSP (whole epoch)"]
+        )
+        self.decode_mode_selector.currentTextChanged.connect(self._on_decode_mode_changed)
+        view_row.addWidget(self.decode_mode_selector)
+        self.classifier_label = QLabel("Classifier:")
+        view_row.addWidget(self.classifier_label)
+        self.classifier_selector = QComboBox()
+        self.classifier_selector.addItems(list(viz.DECODE_CLASSIFIERS))
+        self.classifier_selector.currentTextChanged.connect(self._on_classifier_changed)
+        view_row.addWidget(self.classifier_selector)
         view_row.addStretch(1)
         center_layout.addLayout(view_row)
 
@@ -461,6 +478,19 @@ class MainWindow(QMainWindow):
         if self._view_mode == "conn":
             self._replot()
 
+    def _on_decode_mode_changed(self, text: str) -> None:
+        self._decode_mode = {
+            "Temporal generalization": "generalization",
+            "CSP (whole epoch)": "csp",
+        }.get(text, "time")
+        if self._view_mode == "decoding":
+            self._replot()
+
+    def _on_classifier_changed(self, text: str) -> None:
+        self._decode_classifier = viz.DECODE_CLASSIFIERS.get(text, "logreg")
+        if self._view_mode == "decoding":
+            self._replot()
+
     def _update_view_controls(self) -> None:
         view = self._view_mode
         for widget in (self.band_label, self.band_selector):
@@ -471,11 +501,16 @@ class MainWindow(QMainWindow):
             widget.setVisible(view == "tfr")
         for widget in (self.conn_method_label, self.conn_method_selector):
             widget.setVisible(view == "conn")
+        for widget in (self.decode_mode_label, self.decode_mode_selector,
+                       self.classifier_label, self.classifier_selector):
+            widget.setVisible(view == "decoding")
 
     def _replot(self) -> None:
         ds = self.state.current()
         payload = getattr(ds, "payload", None) if ds else None
-        is_mpl = self._view_mode in ("topo", "tfr", "conn", "stats", "source", "compare")
+        is_mpl = self._view_mode in (
+            "topo", "tfr", "conn", "decoding", "stats", "source", "compare"
+        )
         self.plot.setVisible(not is_mpl)
         self._mpl_canvas.setVisible(is_mpl)
         self._update_view_controls()
@@ -487,6 +522,9 @@ class MainWindow(QMainWindow):
             return
         if self._view_mode == "conn":
             self._plot_connectivity(payload)
+            return
+        if self._view_mode == "decoding":
+            self._plot_decoding(payload)
             return
         if self._view_mode == "stats":
             self._plot_stats(payload)
@@ -502,8 +540,6 @@ class MainWindow(QMainWindow):
             return
         if self._view_mode == "psd":
             self._plot_spectrum(payload)
-        elif self._view_mode == "decoding":
-            self._plot_decoding(payload)
         else:
             self._plot_traces(payload)
 
@@ -609,23 +645,59 @@ class MainWindow(QMainWindow):
     def _plot_decoding(self, payload) -> None:
         import mne
 
-        self.plot.clear()
-        if not isinstance(payload, mne.BaseEpochs):
-            self.statusBar().showMessage(
-                "Decoding needs epochs with ≥2 conditions — add Epochs by events, then Run."
+        self._mpl_fig.clear()
+        ax = self._mpl_fig.add_subplot(111)
+        if not isinstance(payload, mne.BaseEpochs) or len(payload.event_id) < 2:
+            ax.set_axis_off()
+            ax.text(
+                0.5, 0.5,
+                "Decoding needs epochs with ≥2 conditions.\nAdd Epochs by events, then Run.",
+                ha="center", va="center",
             )
+            self._mpl_canvas.draw_idle()
             return
-        try:
-            times, scores = viz.decoding(payload)
-        except Exception as exc:
-            self.statusBar().showMessage(f"Decoding: {exc}")
-            return
-        self.plot.setLabel("bottom", "Time", units="s")
-        self.plot.setLabel("left", "Accuracy")
-        self.plot.getAxis("left").enableAutoSIPrefix(False)
-        self.plot.plot(times, scores, pen=pg.mkPen("#5ac8fa", width=2))
         chance = 1.0 / len(set(payload.events[:, 2]))
-        self.plot.addLine(y=chance, pen=pg.mkPen("#8a99a8", width=1, style=Qt.PenStyle.DashLine))
+        clf = self._decode_classifier.upper()
+        try:
+            if self._decode_mode == "generalization":
+                times, matrix = viz.temporal_generalization(payload, classifier=clf.lower())
+                spread = max(float(np.abs(matrix - chance).max()), 0.01)
+                image = ax.imshow(
+                    matrix, origin="lower", cmap="RdBu_r",
+                    vmin=chance - spread, vmax=chance + spread,
+                    extent=[times[0], times[-1], times[0], times[-1]],
+                )
+                ax.set_xlabel("Test time (s)")
+                ax.set_ylabel("Train time (s)")
+                ax.set_title(f"Temporal generalization — {clf}")
+                self._mpl_fig.colorbar(image, ax=ax, label="Accuracy")
+            elif self._decode_mode == "csp":
+                acc = viz.decoding_csp(payload, classifier=clf.lower())
+                ax.bar([0], [acc], color="#5ac8fa", width=0.5)
+                ax.axhline(chance, color="#8a99a8", linestyle="--", label="chance")
+                ax.set_xlim(-1.5, 1.5)
+                ax.set_ylim(0, 1)
+                ax.set_xticks([0])
+                ax.set_xticklabels(["CSP + " + clf])
+                ax.set_ylabel("Accuracy")
+                ax.set_title("CSP whole-epoch decoding")
+                ax.text(0, acc + 0.02, f"{acc:.2f}", ha="center", va="bottom")
+                ax.legend(loc="upper right", fontsize=8)
+            else:
+                times, scores = viz.decoding(payload, classifier=clf.lower())
+                ax.plot(times, scores, color="#2b6cb0", linewidth=2)
+                ax.axhline(chance, color="#8a99a8", linestyle="--", label="chance")
+                ax.set_xlabel("Time (s)")
+                ax.set_ylabel("Accuracy")
+                ax.set_title(f"Decoding over time — {clf}")
+                ax.legend(loc="upper right", fontsize=8)
+        except Exception as exc:
+            ax.clear()
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "Decoding unavailable.", ha="center", va="center")
+            self.statusBar().showMessage(f"Decoding: {exc}")
+        self._mpl_fig.tight_layout()
+        self._mpl_canvas.draw_idle()
 
     def _plot_stats(self, payload) -> None:
         import mne

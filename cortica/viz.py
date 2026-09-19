@@ -95,16 +95,23 @@ def connectivity(payload, method="plv", band="Alpha"):
     return matrix, list(payload.ch_names)
 
 
-def decoding(epochs, max_cv=5):
-    """Temporal decoding: cross-validated accuracy of classifying each epoch's
-    condition at every time point. Returns ``(times, scores)``. Needs Epochs with
-    at least two conditions.
-    """
-    from mne.decoding import SlidingEstimator, cross_val_multiscore
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.pipeline import make_pipeline
-    from sklearn.preprocessing import StandardScaler
+#: Decoding classifiers (display label -> key).
+DECODE_CLASSIFIERS = {"Logistic regression": "logreg", "LDA": "lda", "SVM": "svm"}
 
+
+def _base_classifier(name):
+    from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.svm import SVC
+
+    if name == "lda":
+        return LinearDiscriminantAnalysis()
+    if name == "svm":
+        return SVC()
+    return LogisticRegression(max_iter=1000)
+
+
+def _decoding_labels_cv(epochs, max_cv):
     labels = epochs.events[:, 2]
     _, counts = np.unique(labels, return_counts=True)
     if len(counts) < 2:
@@ -112,10 +119,50 @@ def decoding(epochs, max_cv=5):
     cv = int(min(max_cv, counts.min()))
     if cv < 2:
         raise ValueError("Not enough trials per condition to cross-validate.")
-    clf = make_pipeline(StandardScaler(), LogisticRegression(max_iter=1000))
+    return labels, cv
+
+
+def decoding(epochs, classifier="logreg", max_cv=5):
+    """Temporal decoding: cross-validated accuracy at every time point.
+    Returns ``(times, scores)``. Needs Epochs with at least two conditions.
+    """
+    from mne.decoding import SlidingEstimator, cross_val_multiscore
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    labels, cv = _decoding_labels_cv(epochs, max_cv)
+    clf = make_pipeline(StandardScaler(), _base_classifier(classifier))
     estimator = SlidingEstimator(clf, scoring="accuracy", verbose=False)
     scores = cross_val_multiscore(estimator, epochs.get_data(), labels, cv=cv, verbose=False)
     return np.asarray(epochs.times), np.asarray(scores).mean(axis=0)
+
+
+def temporal_generalization(epochs, classifier="logreg", max_cv=5):
+    """Temporal generalization: train at each time, test at every other time.
+    Returns ``(times, matrix)`` with ``matrix`` shaped ``(n_times, n_times)``.
+    """
+    from mne.decoding import GeneralizingEstimator, cross_val_multiscore
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    labels, cv = _decoding_labels_cv(epochs, max_cv)
+    clf = make_pipeline(StandardScaler(), _base_classifier(classifier))
+    estimator = GeneralizingEstimator(clf, scoring="accuracy", verbose=False)
+    scores = cross_val_multiscore(estimator, epochs.get_data(), labels, cv=cv, verbose=False)
+    return np.asarray(epochs.times), np.asarray(scores).mean(axis=0)
+
+
+def decoding_csp(epochs, classifier="logreg", n_components=4, max_cv=5):
+    """CSP + classifier whole-epoch decoding. Returns overall CV accuracy (float)."""
+    from mne.decoding import CSP, cross_val_multiscore
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    labels, cv = _decoding_labels_cv(epochs, max_cv)
+    n_comp = min(n_components, epochs.get_data().shape[1])
+    pipe = make_pipeline(CSP(n_components=n_comp), StandardScaler(), _base_classifier(classifier))
+    scores = cross_val_multiscore(pipe, epochs.get_data(), labels, cv=cv, verbose=False)
+    return float(np.asarray(scores).mean())
 
 
 def cluster_test(epochs, n_permutations=200):
