@@ -33,6 +33,9 @@ class SetMontage(Step):
             raise StepError("Set montage needs continuous (Raw) data.")
 
     def run(self, ds, p):
+        from .._mne_compat import resolve_montage_name
+
         raw = ds.payload.copy()
-        raw.set_montage(p["montage"], match_case=False, on_missing="warn", verbose=False)
+        name = resolve_montage_name(p["montage"])
+        raw.set_montage(name, match_case=False, on_missing="warn", verbose=False)
         return ds.derive(raw)
