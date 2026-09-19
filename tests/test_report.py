@@ -38,6 +38,13 @@ def test_build_report_writes_html_with_steps_and_provenance(tmp_path):
     assert "cortica" in html.lower()         # provenance / version
 
 
+def test_build_report_embeds_a_figure(tmp_path):
+    pipe = Pipeline("eeg").add("bandpass_filter", {"l_freq": 1.0, "h_freq": 20.0})
+    out = tmp_path / "report.html"
+    build_report(_dataset(), pipe, str(out))
+    assert "data:image/png;base64," in out.read_text()  # an embedded figure
+
+
 def test_build_report_escapes_html_in_values(tmp_path):
     pipe = Pipeline("eeg").add("bandpass_filter", {"l_freq": "<script>", "h_freq": 20.0})
     out = tmp_path / "report.html"

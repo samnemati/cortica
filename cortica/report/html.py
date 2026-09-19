@@ -31,6 +31,10 @@ _CSS = """
   td.p { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
   .id { color: #8a99a8; font-family: ui-monospace, monospace; font-size: 11px; }
   footer { margin-top: 34px; color: #8a99a8; font-size: 12px; }
+  .figs { display: flex; flex-wrap: wrap; gap: 16px; }
+  figure { margin: 0; }
+  figure img { max-width: 100%; border: 1px solid #e6ecf1; border-radius: 8px; }
+  figcaption { color: #5a6b7b; font-size: 12px; margin-top: 4px; }
   @media (prefers-color-scheme: dark) {
     body { background: #0e141b; color: #e7edf3; }
     h2 { color: #93a2b1; border-color: #26323f; }
@@ -38,6 +42,59 @@ _CSS = """
     th, td { border-color: #212d39; }
   }
 """
+
+
+def _figures(dataset) -> list:
+    """Return ``[(title, base64_png), ...]`` of result figures, or ``[]`` if
+    figure libraries are unavailable or the payload can't produce them."""
+    try:
+        import base64
+        import io
+
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        from .. import viz
+    except Exception:
+        return []
+
+    payload = getattr(dataset, "payload", None)
+    if payload is None or not hasattr(payload, "get_data"):
+        return []
+
+    def encode(fig) -> str:
+        buffer = io.BytesIO()
+        fig.savefig(buffer, format="png", dpi=90, bbox_inches="tight")
+        plt.close(fig)
+        return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+    figures = []
+    try:
+        freqs, psds = viz.spectrum(payload, fmax=45.0)
+        fig, ax = plt.subplots(figsize=(5.5, 3.0))
+        for row in psds:
+            ax.plot(freqs, 10 * np.log10(np.maximum(row, 1e-30)), lw=0.8)
+        ax.set_xlabel("Frequency (Hz)")
+        ax.set_ylabel("Power (dB)")
+        ax.set_title("Power spectrum")
+        figures.append(("Power spectrum", encode(fig)))
+    except Exception:
+        pass
+    try:
+        import mne
+
+        if getattr(payload, "get_montage", lambda: None)() is not None:
+            power = viz.band_power(payload, "Alpha")
+            fig, ax = plt.subplots(figsize=(3.2, 3.2))
+            mne.viz.plot_topomap(power, payload.info, axes=ax, show=False, cmap="RdBu_r")
+            ax.set_title("Alpha power")
+            figures.append(("Alpha head map", encode(fig)))
+    except Exception:
+        pass
+    return figures
 
 
 def build_report(dataset, pipeline, path: str, title: str = "Cortica report") -> str:
@@ -71,6 +128,17 @@ def build_report(dataset, pipeline, path: str, title: str = "Cortica report") ->
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     dur_txt = f"{duration:.1f} s" if duration is not None else "—"
 
+    figures = _figures(dataset)
+    figures_html = ""
+    if figures:
+        cards = "".join(
+            f'<figure><img alt="{_html.escape(fig_title)}" '
+            f'src="data:image/png;base64,{b64}">'
+            f"<figcaption>{_html.escape(fig_title)}</figcaption></figure>"
+            for fig_title, b64 in figures
+        )
+        figures_html = f'<section><h2>Results</h2><div class="figs">{cards}</div></section>'
+
     doc = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -90,6 +158,7 @@ def build_report(dataset, pipeline, path: str, title: str = "Cortica report") ->
       <dt>Duration</dt><dd>{dur_txt}</dd>
     </dl>
   </section>
+  {figures_html}
   <section>
     <h2>Pipeline — {len(pipeline.steps)} step(s)</h2>
     <table>
