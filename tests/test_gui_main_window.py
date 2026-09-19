@@ -209,6 +209,17 @@ def test_time_frequency_view_renders(qtbot):
     assert w._view_mode == "tfr"
 
 
+def test_apply_ica_choice_adds_an_ica_step(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w._apply_ica_choice(6, [0, 2])
+    step = w.state.pipeline.steps[-1]
+    assert step.step_id == "ica"
+    assert step.params["n_components"] == 6
+    assert step.params["exclude"] == "0,2"
+
+
 def test_export_report_writes_html(qtbot, tmp_path):
     w = MainWindow()
     qtbot.addWidget(w)

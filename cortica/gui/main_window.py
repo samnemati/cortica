@@ -68,6 +68,9 @@ class MainWindow(QMainWindow):
         export_action = QAction("Export report…", self)
         export_action.triggered.connect(self._export_report)
         toolbar.addAction(export_action)
+        ica_action = QAction("Fit ICA…", self)
+        ica_action.triggered.connect(self._fit_ica)
+        toolbar.addAction(ica_action)
 
         # Keep the same actions in a menu too (native menu bar on macOS/Linux).
         sample_menu = self.menuBar().addMenu("Sample")
@@ -351,6 +354,27 @@ class MainWindow(QMainWindow):
             return
         build_report(dataset, self.state.pipeline, path)
         self.statusBar().showMessage(f"Report written to {path}")
+
+    # ---- ICA ----------------------------------------------------------------
+    def _fit_ica(self) -> None:
+        ds = self.state.current()
+        payload = getattr(ds, "payload", None) if ds else None
+        if payload is None or not hasattr(payload, "get_data"):
+            self.statusBar().showMessage("Load a recording first.")
+            return
+        from .ica_dialog import ICADialog
+
+        self.statusBar().showMessage("Fitting ICA…")
+        dialog = ICADialog(payload, parent=self)
+        if dialog.exec():
+            self._apply_ica_choice(dialog.n_components, dialog.excluded())
+
+    def _apply_ica_choice(self, n_components: int, excluded: list) -> None:
+        self.state.add_step(
+            "ica",
+            {"n_components": n_components, "exclude": ",".join(str(i) for i in excluded)},
+        )
+        self.statusBar().showMessage(f"Added ICA (removing {len(excluded)} component(s)).")
 
     # ---- signal viewer ------------------------------------------------------
     def _on_view_changed(self, text: str) -> None:
