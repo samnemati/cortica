@@ -3,13 +3,15 @@
 Keeping this logic out of the widgets means it runs in CI without a Qt binding and
 the plotting code stays thin.
 """
+import os.path as op
+
 import numpy as np
 import pytest
 
 mne = pytest.importorskip("mne")
 
 from cortica.samples import eeg_sample  # noqa: E402
-from cortica.steps.epoch import EventEpochs, FixedLengthEpochs  # noqa: E402
+from cortica.steps.epoch import Average, EventEpochs, FixedLengthEpochs  # noqa: E402
 from cortica.viz import (  # noqa: E402
     BANDS,
     CONNECTIVITY_METHODS,
@@ -17,10 +19,13 @@ from cortica.viz import (  # noqa: E402
     cluster_test,
     connectivity,
     decoding,
+    source_localization,
     spectrum,
     time_frequency,
     traces,
 )
+
+_FSAVERAGE = op.expanduser("~/mne_data/MNE-fsaverage-data/fsaverage/bem/fsaverage-ico-5-src.fif")
 
 
 def test_traces_returns_times_and_2d_data_for_raw():
@@ -120,3 +125,11 @@ def test_cluster_test_returns_condition_means_and_mask():
     times, mean_a, mean_b, sig, labels = cluster_test(epochs, n_permutations=100)
     assert len(mean_a) == len(mean_b) == len(sig) == len(times)
     assert len(labels) == 2
+
+
+@pytest.mark.skipif(not op.exists(_FSAVERAGE), reason="fsaverage template not downloaded")
+def test_source_localization_returns_region_activity():
+    evoked = Average().apply(FixedLengthEpochs().apply(eeg_sample(), {"duration": 1.0}), {}).payload
+    names, strengths = source_localization(evoked, n_regions=8)
+    assert len(names) == 8
+    assert len(strengths) == 8

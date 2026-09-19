@@ -137,3 +137,45 @@ def cluster_test(epochs, n_permutations=200):
         if p < 0.05:
             significant |= np.asarray(cluster)
     return np.asarray(epochs.times), a.mean(axis=0), b.mean(axis=0), significant, labels
+
+
+def source_localization(evoked, n_regions=12):
+    """Estimate cortical sources on the fsaverage template (dSPM) and return the
+    most active anatomical regions as ``(region_names, strengths)``.
+
+    ``evoked`` must be an Evoked. Downloads the fsaverage template on first use.
+    """
+    import os.path as op
+
+    import mne
+    from mne.datasets import fetch_fsaverage
+
+    fs_dir = fetch_fsaverage(verbose=False)
+    subjects_dir = op.dirname(fs_dir)
+    src_path = op.join(fs_dir, "bem", "fsaverage-ico-5-src.fif")
+    bem_path = op.join(fs_dir, "bem", "fsaverage-5120-5120-5120-bem-sol.fif")
+
+    evoked = evoked.copy()
+    evoked.set_eeg_reference("average", projection=True, verbose=False)
+    fwd = mne.make_forward_solution(
+        evoked.info, trans="fsaverage", src=src_path, bem=bem_path,
+        eeg=True, mindist=5.0, verbose=False,
+    )
+    inv = mne.minimum_norm.make_inverse_operator(
+        evoked.info, fwd, mne.make_ad_hoc_cov(evoked.info), verbose=False
+    )
+    stc = mne.minimum_norm.apply_inverse(evoked, inv, lambda2=1 / 9, method="dSPM", verbose=False)
+
+    labels = [
+        label
+        for label in mne.read_labels_from_annot(
+            "fsaverage", "aparc", subjects_dir=subjects_dir, verbose=False
+        )
+        if "unknown" not in label.name
+    ]
+    label_tc = mne.extract_label_time_course(
+        stc, labels, inv["src"], mode="mean_flip", allow_empty=True, verbose=False
+    )
+    strength = np.abs(np.asarray(label_tc)).mean(axis=1)
+    order = np.argsort(strength)[::-1][:n_regions]
+    return [labels[i].name for i in order], strength[order]

@@ -247,6 +247,15 @@ def test_statistics_view_renders_with_multi_condition_epochs(qtbot):
     assert w._view_mode == "stats"
 
 
+def test_source_view_renders_a_result(qtbot):
+    # exercise the view + rendering without the heavy fsaverage computation
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._on_sources_ready((["superiorparietal-lh", "cuneus-rh"], [2.0, 1.5]))
+    assert w._view_mode == "source"
+    assert w._source_result[0][0] == "superiorparietal-lh"
+
+
 def test_apply_ica_choice_adds_an_ica_step(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)

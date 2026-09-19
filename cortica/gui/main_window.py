@@ -45,6 +45,8 @@ class MainWindow(QMainWindow):
         self._topo_threshold = 1.0
         self._tfr_method = "morlet"
         self._conn_method = "plv"
+        self._source_result = None
+        self._src_signals = None
         self.setWindowTitle("Cortica")
         self._build_ui()
         self._connect_state()
@@ -73,6 +75,9 @@ class MainWindow(QMainWindow):
         ica_action = QAction("Fit ICA…", self)
         ica_action.triggered.connect(self._fit_ica)
         toolbar.addAction(ica_action)
+        source_action = QAction("Localize sources…", self)
+        source_action.triggered.connect(self._localize_sources)
+        toolbar.addAction(source_action)
 
         # Keep the same actions in a menu too (native menu bar on macOS/Linux).
         sample_menu = self.menuBar().addMenu("Sample")
@@ -393,6 +398,32 @@ class MainWindow(QMainWindow):
         )
         self.statusBar().showMessage(f"Added ICA (removing {len(excluded)} component(s)).")
 
+    # ---- source localization ------------------------------------------------
+    def _localize_sources(self) -> None:
+        import mne
+
+        ds = self.state.current()
+        payload = getattr(ds, "payload", None) if ds else None
+        if not isinstance(payload, mne.Evoked):
+            self.statusBar().showMessage(
+                "Source localization needs an evoked — average epochs first."
+            )
+            return
+        self.statusBar().showMessage("Localizing sources (fsaverage template, ~10 s)…")
+        self._src_signals = run_in_background(lambda: viz.source_localization(payload))
+        self._src_signals.finished.connect(self._on_sources_ready)
+        self._src_signals.failed.connect(self._on_sources_failed)
+
+    def _on_sources_ready(self, result) -> None:
+        self._source_result = result
+        self._src_signals = None
+        self._set_view("source")
+        self.statusBar().showMessage("Source localization complete.")
+
+    def _on_sources_failed(self, message: str) -> None:
+        self._src_signals = None
+        self.statusBar().showMessage(f"Source localization: {message}")
+
     # ---- signal viewer ------------------------------------------------------
     def _on_view_changed(self, text: str) -> None:
         mode = {
@@ -443,7 +474,7 @@ class MainWindow(QMainWindow):
     def _replot(self) -> None:
         ds = self.state.current()
         payload = getattr(ds, "payload", None) if ds else None
-        is_mpl = self._view_mode in ("topo", "tfr", "conn", "stats")
+        is_mpl = self._view_mode in ("topo", "tfr", "conn", "stats", "source")
         self.plot.setVisible(not is_mpl)
         self._mpl_canvas.setVisible(is_mpl)
         self._update_view_controls()
@@ -458,6 +489,9 @@ class MainWindow(QMainWindow):
             return
         if self._view_mode == "stats":
             self._plot_stats(payload)
+            return
+        if self._view_mode == "source":
+            self._plot_source()
             return
         self.plot.clear()
         if payload is None or not hasattr(payload, "get_data"):
@@ -618,6 +652,25 @@ class MainWindow(QMainWindow):
             ax.set_axis_off()
             ax.text(0.5, 0.5, "Statistics unavailable.", ha="center", va="center")
             self.statusBar().showMessage(f"Statistics: {exc}")
+        self._mpl_canvas.draw_idle()
+
+    def _plot_source(self) -> None:
+        self._mpl_fig.clear()
+        ax = self._mpl_fig.add_subplot(111)
+        if not self._source_result:
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "Use “Localize sources…” on an evoked.", ha="center", va="center")
+            self._mpl_canvas.draw_idle()
+            return
+        names, strengths = self._source_result
+        positions = list(range(len(names)))
+        ax.barh(positions, list(strengths), color="#2b6cb0")
+        ax.set_yticks(positions)
+        ax.set_yticklabels(names, fontsize=7)
+        ax.invert_yaxis()
+        ax.set_xlabel("Mean |dSPM|")
+        ax.set_title("Most active regions (fsaverage source estimate)")
+        self._mpl_fig.tight_layout()
         self._mpl_canvas.draw_idle()
 
     def _plot_traces(self, payload) -> None:
