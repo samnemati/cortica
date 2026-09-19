@@ -9,12 +9,14 @@ import pytest
 mne = pytest.importorskip("mne")
 
 from cortica.samples import eeg_sample  # noqa: E402
-from cortica.steps.epoch import FixedLengthEpochs  # noqa: E402
+from cortica.steps.epoch import EventEpochs, FixedLengthEpochs  # noqa: E402
 from cortica.viz import (  # noqa: E402
     BANDS,
     CONNECTIVITY_METHODS,
     band_power,
+    cluster_test,
     connectivity,
+    decoding,
     spectrum,
     time_frequency,
     traces,
@@ -104,3 +106,17 @@ def test_connectivity_returns_a_channel_by_channel_matrix():
     matrix, names = connectivity(epochs.payload, method="plv", band="Alpha")
     assert len(names) == 10
     assert matrix.shape == (10, 10)
+
+
+def test_decoding_returns_accuracy_over_time():
+    epochs = EventEpochs().apply(eeg_sample(), {"tmin": -0.1, "tmax": 0.4}).payload
+    times, scores = decoding(epochs)
+    assert scores.ndim == 1
+    assert len(scores) == len(times)
+
+
+def test_cluster_test_returns_condition_means_and_mask():
+    epochs = EventEpochs().apply(eeg_sample(), {"tmin": -0.1, "tmax": 0.4}).payload
+    times, mean_a, mean_b, sig, labels = cluster_test(epochs, n_permutations=100)
+    assert len(mean_a) == len(mean_b) == len(sig) == len(times)
+    assert len(labels) == 2

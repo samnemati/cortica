@@ -102,7 +102,10 @@ class MainWindow(QMainWindow):
         view_row.addWidget(QLabel("View:"))
         self.view_selector = QComboBox()
         self.view_selector.addItems(
-            ["Time series", "Power spectrum", "Topography", "Time-frequency", "Connectivity"]
+            [
+                "Time series", "Power spectrum", "Topography", "Time-frequency",
+                "Connectivity", "Decoding", "Statistics",
+            ]
         )
         self.view_selector.currentTextChanged.connect(self._on_view_changed)
         view_row.addWidget(self.view_selector)
@@ -397,6 +400,8 @@ class MainWindow(QMainWindow):
             "Topography": "topo",
             "Time-frequency": "tfr",
             "Connectivity": "conn",
+            "Decoding": "decoding",
+            "Statistics": "stats",
         }.get(text, "time")
         self._set_view(mode)
 
@@ -438,7 +443,7 @@ class MainWindow(QMainWindow):
     def _replot(self) -> None:
         ds = self.state.current()
         payload = getattr(ds, "payload", None) if ds else None
-        is_mpl = self._view_mode in ("topo", "tfr", "conn")
+        is_mpl = self._view_mode in ("topo", "tfr", "conn", "stats")
         self.plot.setVisible(not is_mpl)
         self._mpl_canvas.setVisible(is_mpl)
         self._update_view_controls()
@@ -451,11 +456,16 @@ class MainWindow(QMainWindow):
         if self._view_mode == "conn":
             self._plot_connectivity(payload)
             return
+        if self._view_mode == "stats":
+            self._plot_stats(payload)
+            return
         self.plot.clear()
         if payload is None or not hasattr(payload, "get_data"):
             return
         if self._view_mode == "psd":
             self._plot_spectrum(payload)
+        elif self._view_mode == "decoding":
+            self._plot_decoding(payload)
         else:
             self._plot_traces(payload)
 
@@ -556,6 +566,58 @@ class MainWindow(QMainWindow):
             ax.set_axis_off()
             ax.text(0.5, 0.5, "Connectivity unavailable.", ha="center", va="center")
             self.statusBar().showMessage(f"Connectivity: {exc}")
+        self._mpl_canvas.draw_idle()
+
+    def _plot_decoding(self, payload) -> None:
+        import mne
+
+        self.plot.clear()
+        if not isinstance(payload, mne.BaseEpochs):
+            self.statusBar().showMessage(
+                "Decoding needs epochs with ≥2 conditions — add Epochs by events, then Run."
+            )
+            return
+        try:
+            times, scores = viz.decoding(payload)
+        except Exception as exc:
+            self.statusBar().showMessage(f"Decoding: {exc}")
+            return
+        self.plot.setLabel("bottom", "Time", units="s")
+        self.plot.setLabel("left", "Accuracy")
+        self.plot.getAxis("left").enableAutoSIPrefix(False)
+        self.plot.plot(times, scores, pen=pg.mkPen("#5ac8fa", width=2))
+        chance = 1.0 / len(set(payload.events[:, 2]))
+        self.plot.addLine(y=chance, pen=pg.mkPen("#8a99a8", width=1, style=Qt.PenStyle.DashLine))
+
+    def _plot_stats(self, payload) -> None:
+        import mne
+
+        self._mpl_fig.clear()
+        ax = self._mpl_fig.add_subplot(111)
+        if not isinstance(payload, mne.BaseEpochs) or len(payload.event_id) < 2:
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "Statistics need epochs with two conditions.",
+                    ha="center", va="center")
+            self._mpl_canvas.draw_idle()
+            return
+        try:
+            times, mean_a, mean_b, significant, labels = viz.cluster_test(payload)
+            ax.plot(times, mean_a * 1e6, label=labels[0])
+            ax.plot(times, mean_b * 1e6, label=labels[1])
+            lo, hi = ax.get_ylim()
+            if significant.any():
+                ax.fill_between(times, lo, hi, where=significant, color="0.7",
+                                alpha=0.4, step="mid", label="p < 0.05")
+                ax.set_ylim(lo, hi)
+            ax.set_xlabel("Time (s)")
+            ax.set_ylabel("Amplitude (µV)")
+            ax.set_title("Condition comparison (cluster permutation)")
+            ax.legend(loc="upper right", fontsize=8)
+        except Exception as exc:
+            ax.clear()
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "Statistics unavailable.", ha="center", va="center")
+            self.statusBar().showMessage(f"Statistics: {exc}")
         self._mpl_canvas.draw_idle()
 
     def _plot_traces(self, payload) -> None:

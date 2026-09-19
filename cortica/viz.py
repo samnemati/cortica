@@ -93,3 +93,47 @@ def connectivity(payload, method="plv", band="Alpha"):
         matrix = matrix[:, :, 0]
     matrix = matrix + matrix.T  # returned lower-triangular; make it symmetric
     return matrix, list(payload.ch_names)
+
+
+def decoding(epochs, max_cv=5):
+    """Temporal decoding: cross-validated accuracy of classifying each epoch's
+    condition at every time point. Returns ``(times, scores)``. Needs Epochs with
+    at least two conditions.
+    """
+    from mne.decoding import SlidingEstimator, cross_val_multiscore
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    labels = epochs.events[:, 2]
+    _, counts = np.unique(labels, return_counts=True)
+    if len(counts) < 2:
+        raise ValueError("Decoding needs at least two conditions.")
+    cv = int(min(max_cv, counts.min()))
+    if cv < 2:
+        raise ValueError("Not enough trials per condition to cross-validate.")
+    clf = make_pipeline(StandardScaler(), LogisticRegression(max_iter=1000))
+    estimator = SlidingEstimator(clf, scoring="accuracy", verbose=False)
+    scores = cross_val_multiscore(estimator, epochs.get_data(), labels, cv=cv, verbose=False)
+    return np.asarray(epochs.times), np.asarray(scores).mean(axis=0)
+
+
+def cluster_test(epochs, n_permutations=200):
+    """Channel-averaged cluster-based permutation test between the two conditions
+    in ``epochs``. Returns ``(times, mean_a, mean_b, significant_mask, labels)``.
+    """
+    from mne.stats import permutation_cluster_test
+
+    labels = list(epochs.event_id)
+    if len(labels) < 2:
+        raise ValueError("Statistics need two conditions.")
+    a = epochs[labels[0]].get_data().mean(axis=1)  # (n_epochs, n_times), channels averaged
+    b = epochs[labels[1]].get_data().mean(axis=1)
+    _, clusters, p_values, _ = permutation_cluster_test(
+        [a, b], n_permutations=n_permutations, seed=97, out_type="mask", verbose=False
+    )
+    significant = np.zeros(a.shape[1], dtype=bool)
+    for cluster, p in zip(clusters, p_values):
+        if p < 0.05:
+            significant |= np.asarray(cluster)
+    return np.asarray(epochs.times), a.mean(axis=0), b.mean(axis=0), significant, labels

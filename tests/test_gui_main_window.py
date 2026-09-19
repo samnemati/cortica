@@ -227,6 +227,26 @@ def test_connectivity_renders_with_epochs(qtbot):
     assert w._view_mode == "conn"
 
 
+def test_decoding_view_renders_with_multi_condition_epochs(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_events", {"tmin": -0.1, "tmax": 0.4})
+    w.state.run_sync()  # Epochs with target/standard
+    w._set_view("decoding")  # cross-validated decoding, must render
+    assert w._view_mode == "decoding"
+
+
+def test_statistics_view_renders_with_multi_condition_epochs(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_events", {"tmin": -0.1, "tmax": 0.4})
+    w.state.run_sync()
+    w._set_view("stats")  # cluster permutation comparison, must render
+    assert w._view_mode == "stats"
+
+
 def test_apply_ica_choice_adds_an_ica_step(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)
