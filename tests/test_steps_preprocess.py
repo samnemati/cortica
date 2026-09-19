@@ -12,10 +12,10 @@ from cortica.core.registry import default_registry  # noqa: E402
 from cortica.io import dataset_from_raw  # noqa: E402
 from cortica.samples import eeg_sample  # noqa: E402
 from cortica.steps.preprocess import (  # noqa: E402
-    AverageReference,
     BandpassFilter,
     InterpolateBads,
     NotchFilter,
+    ReReference,
     Resample,
 )
 
@@ -69,9 +69,15 @@ def test_notch_filter_runs_and_returns_a_new_raw():
     assert hasattr(out.payload, "get_data")
 
 
-def test_average_reference_zeroes_the_cross_channel_mean():
-    out = AverageReference().apply(eeg_sample(), {})
+def test_reref_average_zeroes_the_cross_channel_mean():
+    out = ReReference().apply(eeg_sample(), {"reference": "average"})
     assert np.allclose(out.payload.get_data().mean(axis=0), 0, atol=1e-12)
+
+
+def test_reref_to_a_specific_channel_zeroes_that_channel():
+    out = ReReference().apply(eeg_sample(), {"reference": "O1"})
+    o1 = out.payload.ch_names.index("O1")
+    assert np.allclose(out.payload.get_data()[o1], 0, atol=1e-12)
 
 
 def test_interpolate_bads_clears_the_bad_list():
@@ -86,7 +92,7 @@ def test_preprocess_steps_register_themselves():
         ("bandpass_filter", BandpassFilter),
         ("notch_filter", NotchFilter),
         ("resample", Resample),
-        ("reref_average", AverageReference),
+        ("reref", ReReference),
         ("interpolate_bads", InterpolateBads),
     ]:
         assert default_registry.get(step_id) is cls

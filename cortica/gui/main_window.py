@@ -43,6 +43,7 @@ class MainWindow(QMainWindow):
         self._view_mode = "time"
         self._band = "Alpha"
         self._topo_threshold = 1.0
+        self._tfr_method = "morlet"
         self.setWindowTitle("Cortica")
         self._build_ui()
         self._connect_state()
@@ -120,6 +121,12 @@ class MainWindow(QMainWindow):
         self.threshold_slider.setFixedWidth(120)
         self.threshold_slider.valueChanged.connect(self._on_threshold_changed)
         view_row.addWidget(self.threshold_slider)
+        self.tfr_method_label = QLabel("Method:")
+        view_row.addWidget(self.tfr_method_label)
+        self.tfr_method_selector = QComboBox()
+        self.tfr_method_selector.addItems(["Morlet", "Multitaper"])
+        self.tfr_method_selector.currentTextChanged.connect(self._on_tfr_method_changed)
+        view_row.addWidget(self.tfr_method_selector)
         view_row.addStretch(1)
         center_layout.addLayout(view_row)
 
@@ -132,6 +139,7 @@ class MainWindow(QMainWindow):
         center_layout.addWidget(self._mpl_canvas)
         self._mpl_canvas.hide()
         self._set_topo_controls_visible(False)
+        self._set_tfr_controls_visible(False)
 
         right = QWidget()
         right_layout = QVBoxLayout(right)
@@ -402,6 +410,15 @@ class MainWindow(QMainWindow):
                        self.threshold_label, self.threshold_slider):
             widget.setVisible(show)
 
+    def _on_tfr_method_changed(self, text: str) -> None:
+        self._tfr_method = text.lower()
+        if self._view_mode == "tfr":
+            self._replot()
+
+    def _set_tfr_controls_visible(self, show: bool) -> None:
+        self.tfr_method_label.setVisible(show)
+        self.tfr_method_selector.setVisible(show)
+
     def _replot(self) -> None:
         ds = self.state.current()
         payload = getattr(ds, "payload", None) if ds else None
@@ -409,6 +426,7 @@ class MainWindow(QMainWindow):
         self.plot.setVisible(not is_mpl)
         self._mpl_canvas.setVisible(is_mpl)
         self._set_topo_controls_visible(self._view_mode == "topo")
+        self._set_tfr_controls_visible(self._view_mode == "tfr")
         if self._view_mode == "topo":
             self._plot_topomap(payload)
             return
@@ -474,7 +492,9 @@ class MainWindow(QMainWindow):
             self._mpl_canvas.draw_idle()
             return
         try:
-            times, freqs, power = viz.time_frequency(payload, picks=picks, fmax=40.0)
+            times, freqs, power = viz.time_frequency(
+                payload, picks=picks, fmax=40.0, method=self._tfr_method
+            )
             image = ax.imshow(
                 power, aspect="auto", origin="lower", cmap="RdBu_r",
                 extent=[times[0], times[-1], freqs[0], freqs[-1]],

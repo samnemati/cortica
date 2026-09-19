@@ -78,3 +78,10 @@ def test_time_frequency_returns_freq_by_time_power():
     times, freqs, power = time_frequency(eeg_sample().payload, picks=["O1", "O2"], fmax=30.0)
     assert power.ndim == 2
     assert power.shape == (len(freqs), len(times))
+
+
+def test_time_frequency_supports_multitaper():
+    times, freqs, power = time_frequency(
+        eeg_sample().payload, picks=["O1"], fmax=20.0, method="multitaper"
+    )
+    assert power.shape == (len(freqs), len(times))

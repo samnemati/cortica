@@ -23,6 +23,20 @@ def _raw(dur=10.0, sfreq=100.0):
     return mne.io.RawArray(data, info, verbose=False)
 
 
+def _raw_with_stim(dur=10.0, sfreq=100.0):
+    n = int(dur * sfreq)
+    eeg = mne.io.RawArray(
+        np.random.RandomState(0).randn(2, n) * 1e-6,
+        mne.create_info(["EEG 1", "EEG 2"], sfreq, ch_types="eeg"),
+        verbose=False,
+    )
+    stim = np.zeros((1, n))
+    stim[0, [100, 300, 500, 700]] = 1  # four trigger pulses
+    stim_raw = mne.io.RawArray(stim, mne.create_info(["STI 014"], sfreq, ["stim"]), verbose=False)
+    eeg.add_channels([stim_raw], force_update_info=True)
+    return eeg
+
+
 def test_fixed_length_epochs_segments_the_recording():
     ds = dataset_from_raw(_raw(dur=10.0, sfreq=100.0))
     out = FixedLengthEpochs().apply(ds, {"duration": 2.0})
@@ -72,6 +86,15 @@ def test_event_epochs_rejects_already_epoched_data():
     epoched = FixedLengthEpochs().apply(dataset_from_raw(_raw()), {"duration": 1.0})
     with pytest.raises(StepError):
         EventEpochs().apply(epoched, {})
+
+
+def test_event_epochs_from_a_stim_channel():
+    out = EventEpochs().apply(
+        dataset_from_raw(_raw_with_stim()), {"tmin": -0.1, "tmax": 0.3, "source": "stim"}
+    )
+    data = out.payload.get_data()
+    assert data.ndim == 3
+    assert data.shape[0] >= 1
 
 
 def test_epoch_steps_register_themselves():

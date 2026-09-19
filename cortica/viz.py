@@ -55,12 +55,14 @@ def band_power(payload, band, picks=None):
     return psds[:, mask].mean(axis=1)
 
 
-def time_frequency(payload, picks=None, fmax=40.0):
-    """Return ``(times, freqs, power)`` — a Morlet time-frequency map averaged
-    across the selected channels; ``power`` is shaped ``(n_freqs, n_times)``.
+def time_frequency(payload, picks=None, fmax=40.0, method="morlet"):
+    """Return ``(times, freqs, power)`` — a time-frequency map averaged across the
+    selected channels; ``power`` is shaped ``(n_freqs, n_times)``.
+
+    ``method`` is ``"morlet"`` or ``"multitaper"``.
     """
     freqs = np.arange(2.0, fmax, 1.0)
-    kwargs = {"method": "morlet", "freqs": freqs, "n_cycles": freqs / 2.0, "verbose": False}
+    kwargs = {"method": method, "freqs": freqs, "n_cycles": freqs / 2.0, "verbose": False}
     if picks is not None:
         kwargs["picks"] = picks
     tfr = payload.compute_tfr(**kwargs)

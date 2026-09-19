@@ -7,7 +7,7 @@ Steps copy the payload before transforming it, keeping the input immutable.
 from __future__ import annotations
 
 from ..core.errors import StepError
-from ..core.params import Float
+from ..core.params import Float, Str
 from ..core.registry import register
 from ..core.step import Step
 
@@ -64,16 +64,21 @@ class NotchFilter(Step):
 
 
 @register
-class AverageReference(Step):
-    id = "reref_average"
-    name = "Re-reference (average)"
+class ReReference(Step):
+    id = "reref"
+    name = "Re-reference"
     category = "Preprocess"
     modalities = ["eeg"]
-    params = []
+    params = [Str("reference", "average", label="Reference ('average' or channel names)")]
 
     def run(self, ds, p):
         raw = ds.payload.copy()
-        raw.set_eeg_reference("average", projection=False, verbose=False)
+        reference = str(p["reference"]).strip()
+        if reference.lower() == "average":
+            raw.set_eeg_reference("average", projection=False, verbose=False)
+        else:
+            names = [name.strip() for name in reference.split(",") if name.strip()]
+            raw.set_eeg_reference(names, verbose=False)
         return ds.derive(raw)
 
 

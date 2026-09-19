@@ -7,7 +7,7 @@ response. Each step checks its input type so misuse fails with a clear message.
 from __future__ import annotations
 
 from ..core.errors import StepError
-from ..core.params import Float
+from ..core.params import Choice, Float
 from ..core.registry import register
 from ..core.step import Step
 
@@ -48,6 +48,7 @@ class EventEpochs(Step):
     params = [
         Float("tmin", -0.2, unit="s", label="Start (rel. event)"),
         Float("tmax", 0.8, unit="s", label="End (rel. event)"),
+        Choice("source", "auto", options=["auto", "annotations", "stim"], label="Events from"),
     ]
 
     def check(self, ds) -> None:
@@ -55,18 +56,25 @@ class EventEpochs(Step):
 
         if not isinstance(ds.payload, mne.io.BaseRaw):
             raise StepError("Event-based epoching needs continuous (Raw) data.")
-        if len(ds.payload.annotations) == 0:
-            raise StepError(
-                "No events found — this recording has no annotations/triggers to epoch on."
-            )
+        has_annotations = len(ds.payload.annotations) > 0
+        has_stim = "stim" in ds.payload.get_channel_types()
+        if not has_annotations and not has_stim:
+            raise StepError("No events found — need annotations or a stim channel to epoch on.")
 
     def run(self, ds, p):
         import mne
 
-        events, event_id = mne.events_from_annotations(ds.payload, verbose=False)
+        raw = ds.payload
+        use_annotations = p["source"] == "annotations" or (
+            p["source"] == "auto" and len(raw.annotations) > 0
+        )
+        if use_annotations:
+            events, event_id = mne.events_from_annotations(raw, verbose=False)
+        else:
+            events, event_id = mne.find_events(raw, verbose=False), None
         baseline = (None, 0) if p["tmin"] < 0 else None
         epochs = mne.Epochs(
-            ds.payload, events, event_id=event_id,
+            raw, events, event_id=event_id,
             tmin=p["tmin"], tmax=p["tmax"], baseline=baseline,
             preload=True, verbose=False,
         )
