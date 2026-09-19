@@ -247,6 +247,16 @@ def test_statistics_view_renders_with_multi_condition_epochs(qtbot):
     assert w._view_mode == "stats"
 
 
+def test_comparison_view_renders_with_multi_condition_epochs(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_events", {"tmin": -0.1, "tmax": 0.4})
+    w.state.run_sync()
+    w._set_view("compare")  # overlays conditions + difference wave, must render
+    assert w._view_mode == "compare"
+
+
 def test_source_view_renders_a_result(qtbot):
     # exercise the view + rendering without the heavy fsaverage computation
     w = MainWindow()

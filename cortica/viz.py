@@ -139,6 +139,19 @@ def cluster_test(epochs, n_permutations=200):
     return np.asarray(epochs.times), a.mean(axis=0), b.mean(axis=0), significant, labels
 
 
+def condition_comparison(epochs):
+    """Per-condition average time course (channels averaged) for every condition in
+    ``epochs``, plus the difference wave when there are exactly two. Returns
+    ``(times, {label: mean_tc}, difference_or_None)``.
+    """
+    labels = list(epochs.event_id)
+    if len(labels) < 2:
+        raise ValueError("Condition comparison needs at least two conditions.")
+    means = {label: epochs[label].average().get_data().mean(axis=0) for label in labels}
+    difference = means[labels[0]] - means[labels[1]] if len(labels) == 2 else None
+    return np.asarray(epochs.times), means, difference
+
+
 def source_localization(evoked, n_regions=12):
     """Estimate cortical sources on the fsaverage template (dSPM) and return the
     most active anatomical regions as ``(region_names, strengths)``.

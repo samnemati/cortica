@@ -109,7 +109,7 @@ class MainWindow(QMainWindow):
         self.view_selector.addItems(
             [
                 "Time series", "Power spectrum", "Topography", "Time-frequency",
-                "Connectivity", "Decoding", "Statistics",
+                "Connectivity", "Decoding", "Statistics", "Comparison",
             ]
         )
         self.view_selector.currentTextChanged.connect(self._on_view_changed)
@@ -433,6 +433,7 @@ class MainWindow(QMainWindow):
             "Connectivity": "conn",
             "Decoding": "decoding",
             "Statistics": "stats",
+            "Comparison": "compare",
         }.get(text, "time")
         self._set_view(mode)
 
@@ -474,7 +475,7 @@ class MainWindow(QMainWindow):
     def _replot(self) -> None:
         ds = self.state.current()
         payload = getattr(ds, "payload", None) if ds else None
-        is_mpl = self._view_mode in ("topo", "tfr", "conn", "stats", "source")
+        is_mpl = self._view_mode in ("topo", "tfr", "conn", "stats", "source", "compare")
         self.plot.setVisible(not is_mpl)
         self._mpl_canvas.setVisible(is_mpl)
         self._update_view_controls()
@@ -492,6 +493,9 @@ class MainWindow(QMainWindow):
             return
         if self._view_mode == "source":
             self._plot_source()
+            return
+        if self._view_mode == "compare":
+            self._plot_compare(payload)
             return
         self.plot.clear()
         if payload is None or not hasattr(payload, "get_data"):
@@ -671,6 +675,35 @@ class MainWindow(QMainWindow):
         ax.set_xlabel("Mean |dSPM|")
         ax.set_title("Most active regions (fsaverage source estimate)")
         self._mpl_fig.tight_layout()
+        self._mpl_canvas.draw_idle()
+
+    def _plot_compare(self, payload) -> None:
+        import mne
+
+        self._mpl_fig.clear()
+        ax = self._mpl_fig.add_subplot(111)
+        if not isinstance(payload, mne.BaseEpochs) or len(payload.event_id) < 2:
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "Comparison needs epochs with two or more conditions.",
+                    ha="center", va="center")
+            self._mpl_canvas.draw_idle()
+            return
+        try:
+            times, means, difference = viz.condition_comparison(payload)
+            for label, time_course in means.items():
+                ax.plot(times, time_course * 1e6, label=label)
+            if difference is not None:
+                ax.plot(times, difference * 1e6, "k--", linewidth=1, label="difference")
+            ax.axhline(0, color="0.8", linewidth=0.8)
+            ax.set_xlabel("Time (s)")
+            ax.set_ylabel("Amplitude (µV)")
+            ax.set_title("Condition comparison")
+            ax.legend(loc="upper right", fontsize=8)
+        except Exception as exc:
+            ax.clear()
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "Comparison unavailable.", ha="center", va="center")
+            self.statusBar().showMessage(f"Comparison: {exc}")
         self._mpl_canvas.draw_idle()
 
     def _plot_traces(self, payload) -> None:

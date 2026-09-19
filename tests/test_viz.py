@@ -17,6 +17,7 @@ from cortica.viz import (  # noqa: E402
     CONNECTIVITY_METHODS,
     band_power,
     cluster_test,
+    condition_comparison,
     connectivity,
     decoding,
     source_localization,
@@ -125,6 +126,14 @@ def test_cluster_test_returns_condition_means_and_mask():
     times, mean_a, mean_b, sig, labels = cluster_test(epochs, n_permutations=100)
     assert len(mean_a) == len(mean_b) == len(sig) == len(times)
     assert len(labels) == 2
+
+
+def test_condition_comparison_returns_means_and_difference():
+    epochs = EventEpochs().apply(eeg_sample(), {"tmin": -0.1, "tmax": 0.4}).payload
+    times, means, difference = condition_comparison(epochs)
+    assert set(means) == {"standard", "target"}
+    assert len(means["standard"]) == len(times)
+    assert difference is not None and len(difference) == len(times)
 
 
 @pytest.mark.skipif(not op.exists(_FSAVERAGE), reason="fsaverage template not downloaded")
