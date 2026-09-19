@@ -10,7 +10,14 @@ mne = pytest.importorskip("mne")
 
 from cortica.core.registry import default_registry  # noqa: E402
 from cortica.io import dataset_from_raw  # noqa: E402
-from cortica.steps.preprocess import BandpassFilter, Resample  # noqa: E402
+from cortica.samples import eeg_sample  # noqa: E402
+from cortica.steps.preprocess import (  # noqa: E402
+    AverageReference,
+    BandpassFilter,
+    InterpolateBads,
+    NotchFilter,
+    Resample,
+)
 
 SFREQ = 200.0
 
@@ -57,6 +64,29 @@ def test_resample_changes_sfreq_and_updates_meta():
     assert out.payload.n_times == 400  # 100 Hz * 4 s
 
 
+def test_notch_filter_runs_and_returns_a_new_raw():
+    out = NotchFilter().apply(eeg_sample(), {"freq": 60.0})
+    assert hasattr(out.payload, "get_data")
+
+
+def test_average_reference_zeroes_the_cross_channel_mean():
+    out = AverageReference().apply(eeg_sample(), {})
+    assert np.allclose(out.payload.get_data().mean(axis=0), 0, atol=1e-12)
+
+
+def test_interpolate_bads_clears_the_bad_list():
+    raw = eeg_sample().payload.copy()
+    raw.info["bads"] = ["O1"]
+    out = InterpolateBads().apply(dataset_from_raw(raw), {})
+    assert out.payload.info["bads"] == []
+
+
 def test_preprocess_steps_register_themselves():
-    assert default_registry.get("bandpass_filter") is BandpassFilter
-    assert default_registry.get("resample") is Resample
+    for step_id, cls in [
+        ("bandpass_filter", BandpassFilter),
+        ("notch_filter", NotchFilter),
+        ("resample", Resample),
+        ("reref_average", AverageReference),
+        ("interpolate_bads", InterpolateBads),
+    ]:
+        assert default_registry.get(step_id) is cls

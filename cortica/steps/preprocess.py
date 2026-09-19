@@ -6,6 +6,7 @@ Steps copy the payload before transforming it, keeping the input immutable.
 """
 from __future__ import annotations
 
+from ..core.errors import StepError
 from ..core.params import Float
 from ..core.registry import register
 from ..core.step import Step
@@ -40,3 +41,51 @@ class Resample(Step):
         result = ds.derive(raw)
         result.meta["sfreq"] = float(raw.info["sfreq"])
         return result
+
+
+@register
+class NotchFilter(Step):
+    id = "notch_filter"
+    name = "Notch filter"
+    category = "Preprocess"
+    modalities = ["eeg"]
+    params = [Float("freq", 60.0, min=1.0, unit="Hz", label="Line frequency")]
+
+    def run(self, ds, p):
+        nyquist = ds.payload.info["sfreq"] / 2
+        freqs, harmonic = [], p["freq"]
+        while harmonic < nyquist:
+            freqs.append(harmonic)
+            harmonic += p["freq"]
+        if not freqs:
+            raise StepError(f"Notch frequency {p['freq']} Hz is at/above Nyquist ({nyquist} Hz).")
+        raw = ds.payload.copy().notch_filter(freqs, verbose=False)
+        return ds.derive(raw)
+
+
+@register
+class AverageReference(Step):
+    id = "reref_average"
+    name = "Re-reference (average)"
+    category = "Preprocess"
+    modalities = ["eeg"]
+    params = []
+
+    def run(self, ds, p):
+        raw = ds.payload.copy()
+        raw.set_eeg_reference("average", projection=False, verbose=False)
+        return ds.derive(raw)
+
+
+@register
+class InterpolateBads(Step):
+    id = "interpolate_bads"
+    name = "Interpolate bad channels"
+    category = "Artifacts & quality"
+    modalities = ["eeg"]
+    params = []
+
+    def run(self, ds, p):
+        raw = ds.payload.copy()
+        raw.interpolate_bads(reset_bads=True, verbose=False)
+        return ds.derive(raw)
