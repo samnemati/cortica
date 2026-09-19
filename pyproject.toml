@@ -35,6 +35,7 @@ dependencies = [
   "mne>=1.6",
   "mne-nirs",
   "mne-connectivity",
+  "scikit-learn",  # decoding, CSP, and cluster statistics
   "matplotlib",
 ]
 
