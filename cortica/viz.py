@@ -53,3 +53,19 @@ def band_power(payload, band, picks=None):
     freqs, psds = spectrum(payload, fmax=fmax + 5.0, picks=picks)
     mask = (freqs >= fmin) & (freqs <= fmax)
     return psds[:, mask].mean(axis=1)
+
+
+def time_frequency(payload, picks=None, fmax=40.0):
+    """Return ``(times, freqs, power)`` — a Morlet time-frequency map averaged
+    across the selected channels; ``power`` is shaped ``(n_freqs, n_times)``.
+    """
+    freqs = np.arange(2.0, fmax, 1.0)
+    kwargs = {"method": "morlet", "freqs": freqs, "n_cycles": freqs / 2.0, "verbose": False}
+    if picks is not None:
+        kwargs["picks"] = picks
+    tfr = payload.compute_tfr(**kwargs)
+    power = np.asarray(tfr.data)
+    if power.ndim == 4:  # epochs (n_epochs, n_channels, n_freqs, n_times)
+        power = power.mean(axis=0)
+    power = power.mean(axis=0)  # average across channels -> (n_freqs, n_times)
+    return np.asarray(tfr.times), np.asarray(tfr.freqs), power

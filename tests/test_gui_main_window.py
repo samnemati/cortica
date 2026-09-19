@@ -201,6 +201,14 @@ def test_unchecking_a_channel_removes_it_from_picks(qtbot):
     assert len(picks) == 9
 
 
+def test_time_frequency_view_renders(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.view_selector.setCurrentText("Time-frequency")  # must render without raising
+    assert w._view_mode == "tfr"
+
+
 def test_export_report_writes_html(qtbot, tmp_path):
     w = MainWindow()
     qtbot.addWidget(w)

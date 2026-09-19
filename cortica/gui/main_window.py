@@ -96,7 +96,9 @@ class MainWindow(QMainWindow):
         view_row.setContentsMargins(8, 6, 8, 0)
         view_row.addWidget(QLabel("View:"))
         self.view_selector = QComboBox()
-        self.view_selector.addItems(["Time series", "Power spectrum", "Topography"])
+        self.view_selector.addItems(
+            ["Time series", "Power spectrum", "Topography", "Time-frequency"]
+        )
         self.view_selector.currentTextChanged.connect(self._on_view_changed)
         view_row.addWidget(self.view_selector)
         # Topography-only controls (hidden unless the head-map view is active).
@@ -122,10 +124,10 @@ class MainWindow(QMainWindow):
         self.plot.setBackground("#0c141e")
         self.plot.showGrid(x=True, y=True, alpha=0.15)
         center_layout.addWidget(self.plot)
-        self._topo_fig = Figure(figsize=(4, 4))
-        self._topo_canvas = FigureCanvasQTAgg(self._topo_fig)
-        center_layout.addWidget(self._topo_canvas)
-        self._topo_canvas.hide()
+        self._mpl_fig = Figure(figsize=(4, 4))
+        self._mpl_canvas = FigureCanvasQTAgg(self._mpl_fig)
+        center_layout.addWidget(self._mpl_canvas)
+        self._mpl_canvas.hide()
         self._set_topo_controls_visible(False)
 
         right = QWidget()
@@ -352,7 +354,9 @@ class MainWindow(QMainWindow):
 
     # ---- signal viewer ------------------------------------------------------
     def _on_view_changed(self, text: str) -> None:
-        mode = {"Power spectrum": "psd", "Topography": "topo"}.get(text, "time")
+        mode = {"Power spectrum": "psd", "Topography": "topo", "Time-frequency": "tfr"}.get(
+            text, "time"
+        )
         self._set_view(mode)
 
     def _set_view(self, mode: str) -> None:
@@ -377,12 +381,15 @@ class MainWindow(QMainWindow):
     def _replot(self) -> None:
         ds = self.state.current()
         payload = getattr(ds, "payload", None) if ds else None
-        is_topo = self._view_mode == "topo"
-        self.plot.setVisible(not is_topo)
-        self._topo_canvas.setVisible(is_topo)
-        self._set_topo_controls_visible(is_topo)
-        if is_topo:
+        is_mpl = self._view_mode in ("topo", "tfr")
+        self.plot.setVisible(not is_mpl)
+        self._mpl_canvas.setVisible(is_mpl)
+        self._set_topo_controls_visible(self._view_mode == "topo")
+        if self._view_mode == "topo":
             self._plot_topomap(payload)
+            return
+        if self._view_mode == "tfr":
+            self._plot_tfr(payload)
             return
         self.plot.clear()
         if payload is None or not hasattr(payload, "get_data"):
@@ -393,17 +400,17 @@ class MainWindow(QMainWindow):
             self._plot_traces(payload)
 
     def _plot_topomap(self, payload) -> None:
-        self._topo_fig.clear()
-        ax = self._topo_fig.add_subplot(111)
+        self._mpl_fig.clear()
+        ax = self._mpl_fig.add_subplot(111)
         ax.set_axis_off()
         if payload is None or not hasattr(payload, "get_data"):
             ax.text(0.5, 0.5, "Load a recording to see a head map.", ha="center", va="center")
-            self._topo_canvas.draw_idle()
+            self._mpl_canvas.draw_idle()
             return
         picks = self._current_picks()
         if not picks:
             ax.text(0.5, 0.5, "Select at least one channel.", ha="center", va="center")
-            self._topo_canvas.draw_idle()
+            self._mpl_canvas.draw_idle()
             return
         try:
             import mne
@@ -426,7 +433,38 @@ class MainWindow(QMainWindow):
                 ha="center", va="center",
             )
             self.statusBar().showMessage(f"Head map: {exc}")
-        self._topo_canvas.draw_idle()
+        self._mpl_canvas.draw_idle()
+
+    def _plot_tfr(self, payload) -> None:
+        self._mpl_fig.clear()
+        ax = self._mpl_fig.add_subplot(111)
+        if payload is None or not hasattr(payload, "get_data"):
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "Load a recording to see time-frequency.", ha="center", va="center")
+            self._mpl_canvas.draw_idle()
+            return
+        picks = self._current_picks()
+        if not picks:
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "Select at least one channel.", ha="center", va="center")
+            self._mpl_canvas.draw_idle()
+            return
+        try:
+            times, freqs, power = viz.time_frequency(payload, picks=picks, fmax=40.0)
+            image = ax.imshow(
+                power, aspect="auto", origin="lower", cmap="RdBu_r",
+                extent=[times[0], times[-1], freqs[0], freqs[-1]],
+            )
+            ax.set_xlabel("Time (s)")
+            ax.set_ylabel("Frequency (Hz)")
+            ax.set_title("Time-frequency power (mean of selected channels)")
+            self._mpl_fig.colorbar(image, ax=ax)
+        except Exception as exc:
+            ax.clear()
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "Time-frequency unavailable.", ha="center", va="center")
+            self.statusBar().showMessage(f"Time-frequency: {exc}")
+        self._mpl_canvas.draw_idle()
 
     def _plot_traces(self, payload) -> None:
         picks = self._current_picks()

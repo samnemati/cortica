@@ -10,7 +10,7 @@ mne = pytest.importorskip("mne")
 
 from cortica.samples import eeg_sample  # noqa: E402
 from cortica.steps.epoch import FixedLengthEpochs  # noqa: E402
-from cortica.viz import BANDS, band_power, spectrum, traces  # noqa: E402
+from cortica.viz import BANDS, band_power, spectrum, time_frequency, traces  # noqa: E402
 
 
 def test_traces_returns_times_and_2d_data_for_raw():
@@ -72,3 +72,9 @@ def test_spectrum_can_subset_channels():
 def test_band_power_can_subset_channels():
     power = band_power(eeg_sample().payload, "Alpha", picks=["O1", "O2"])
     assert power.shape == (2,)
+
+
+def test_time_frequency_returns_freq_by_time_power():
+    times, freqs, power = time_frequency(eeg_sample().payload, picks=["O1", "O2"], fmax=30.0)
+    assert power.ndim == 2
+    assert power.shape == (len(freqs), len(times))
