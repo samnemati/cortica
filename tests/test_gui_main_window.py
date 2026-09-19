@@ -227,6 +227,34 @@ def test_connectivity_renders_with_epochs(qtbot):
     assert w._view_mode == "conn"
 
 
+def test_connectivity_offers_the_full_measure_set(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    assert w.conn_method_selector.count() == 6  # plv/coh/wpli/imcoh/pli/ciplv
+
+
+def test_connectogram_style_renders_with_epochs(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_fixed", {"duration": 1.0})
+    w.state.run_sync()
+    w._set_view("conn")
+    w.conn_style_selector.setCurrentText("Connectogram")  # circular graph, must render
+    assert w._conn_style == "connectogram"
+
+
+def test_connectivity_edge_threshold_updates_state(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_fixed", {"duration": 1.0})
+    w.state.run_sync()
+    w._set_view("conn")
+    w.conn_threshold_slider.setValue(50)  # show only edges >= 50% of the strongest
+    assert w._conn_threshold == 0.5
+
+
 def test_decoding_view_renders_with_multi_condition_epochs(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)

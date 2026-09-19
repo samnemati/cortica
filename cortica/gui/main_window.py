@@ -45,6 +45,8 @@ class MainWindow(QMainWindow):
         self._topo_threshold = 1.0
         self._tfr_method = "morlet"
         self._conn_method = "plv"
+        self._conn_style = "matrix"
+        self._conn_threshold = 0.0
         self._decode_mode = "time"
         self._decode_classifier = "logreg"
         self._source_result = None
@@ -144,6 +146,23 @@ class MainWindow(QMainWindow):
         self.conn_method_selector.addItems(list(viz.CONNECTIVITY_METHODS))
         self.conn_method_selector.currentTextChanged.connect(self._on_conn_method_changed)
         view_row.addWidget(self.conn_method_selector)
+        self.conn_style_label = QLabel("Style:")
+        view_row.addWidget(self.conn_style_label)
+        self.conn_style_selector = QComboBox()
+        self.conn_style_selector.addItems(["Matrix", "Connectogram"])
+        self.conn_style_selector.currentTextChanged.connect(self._on_conn_style_changed)
+        view_row.addWidget(self.conn_style_selector)
+        self.conn_threshold_label = QLabel("Sparsity:")
+        view_row.addWidget(self.conn_threshold_label)
+        self.conn_threshold_slider = QSlider(Qt.Orientation.Horizontal)
+        self.conn_threshold_slider.setRange(0, 90)  # % of the weakest edges to hide
+        self.conn_threshold_slider.setValue(0)
+        self.conn_threshold_slider.setFixedWidth(120)
+        self.conn_threshold_slider.setToolTip(
+            "Hide the weakest edges — right shows only the strongest"
+        )
+        self.conn_threshold_slider.valueChanged.connect(self._on_conn_threshold_changed)
+        view_row.addWidget(self.conn_threshold_slider)
         # Decoding-only controls (hidden unless the decoding view is active).
         self.decode_mode_label = QLabel("Mode:")
         view_row.addWidget(self.decode_mode_label)
@@ -478,6 +497,16 @@ class MainWindow(QMainWindow):
         if self._view_mode == "conn":
             self._replot()
 
+    def _on_conn_style_changed(self, text: str) -> None:
+        self._conn_style = "connectogram" if text == "Connectogram" else "matrix"
+        if self._view_mode == "conn":
+            self._replot()
+
+    def _on_conn_threshold_changed(self, value: int) -> None:
+        self._conn_threshold = value / 100.0
+        if self._view_mode == "conn":
+            self._replot()
+
     def _on_decode_mode_changed(self, text: str) -> None:
         self._decode_mode = {
             "Temporal generalization": "generalization",
@@ -499,7 +528,9 @@ class MainWindow(QMainWindow):
             widget.setVisible(view == "topo")
         for widget in (self.tfr_method_label, self.tfr_method_selector):
             widget.setVisible(view == "tfr")
-        for widget in (self.conn_method_label, self.conn_method_selector):
+        for widget in (self.conn_method_label, self.conn_method_selector,
+                       self.conn_style_label, self.conn_style_selector,
+                       self.conn_threshold_label, self.conn_threshold_slider):
             widget.setVisible(view == "conn")
         for widget in (self.decode_mode_label, self.decode_mode_selector,
                        self.classifier_label, self.classifier_selector):
@@ -513,6 +544,7 @@ class MainWindow(QMainWindow):
         )
         self.plot.setVisible(not is_mpl)
         self._mpl_canvas.setVisible(is_mpl)
+        self._mpl_fig.set_facecolor("white")  # connectogram sets its own dark face
         self._update_view_controls()
         if self._view_mode == "topo":
             self._plot_topomap(payload)
@@ -616,8 +648,8 @@ class MainWindow(QMainWindow):
         import mne
 
         self._mpl_fig.clear()
-        ax = self._mpl_fig.add_subplot(111)
         if not isinstance(payload, mne.BaseEpochs):
+            ax = self._mpl_fig.add_subplot(111)
             ax.set_axis_off()
             ax.text(
                 0.5, 0.5,
@@ -628,19 +660,53 @@ class MainWindow(QMainWindow):
             return
         try:
             matrix, names = viz.connectivity(payload, method=self._conn_method, band=self._band)
-            image = ax.imshow(matrix, cmap="magma", vmin=0, vmax=1)
-            ax.set_xticks(range(len(names)))
-            ax.set_yticks(range(len(names)))
-            ax.set_xticklabels(names, rotation=90, fontsize=7)
-            ax.set_yticklabels(names, fontsize=7)
-            ax.set_title(f"{self._conn_method.upper()} — {self._band}")
-            self._mpl_fig.colorbar(image, ax=ax)
+            matrix = viz.threshold_matrix(matrix, self._conn_threshold)
+            signed = float(np.nanmin(matrix)) < 0.0  # imcoh spans negative values
+            if self._conn_style == "connectogram":
+                self._plot_connectogram(matrix, names, signed)
+            else:
+                self._plot_conn_matrix(matrix, names, signed)
         except Exception as exc:
-            ax.clear()
+            self._mpl_fig.clear()
+            ax = self._mpl_fig.add_subplot(111)
             ax.set_axis_off()
             ax.text(0.5, 0.5, "Connectivity unavailable.", ha="center", va="center")
             self.statusBar().showMessage(f"Connectivity: {exc}")
         self._mpl_canvas.draw_idle()
+
+    def _plot_conn_matrix(self, matrix, names, signed) -> None:
+        ax = self._mpl_fig.add_subplot(111)
+        if signed:
+            lim = max(abs(float(np.nanmin(matrix))), abs(float(np.nanmax(matrix))), 1e-6)
+            image = ax.imshow(matrix, cmap="RdBu_r", vmin=-lim, vmax=lim)
+        else:
+            image = ax.imshow(matrix, cmap="magma", vmin=0, vmax=1)
+        ax.set_xticks(range(len(names)))
+        ax.set_yticks(range(len(names)))
+        ax.set_xticklabels(names, rotation=90, fontsize=7)
+        ax.set_yticklabels(names, fontsize=7)
+        ax.set_title(f"{self._conn_method.upper()} — {self._band}")
+        self._mpl_fig.colorbar(image, ax=ax)
+
+    def _plot_connectogram(self, matrix, names, signed) -> None:
+        from mne_connectivity.viz import plot_connectivity_circle
+
+        self._mpl_fig.set_facecolor("#0c141e")
+        ax = self._mpl_fig.add_subplot(111, polar=True)
+        arr = np.asarray(matrix)
+        n_nonzero = int((np.triu(arr, 1) != 0).sum())
+        n_lines = n_nonzero if self._conn_threshold > 0.0 else None
+        if signed:
+            lim = max(abs(float(np.nanmin(arr))), abs(float(np.nanmax(arr))), 1e-6)
+            cmap, vmin, vmax = "RdBu_r", -lim, lim
+        else:
+            cmap, vmin, vmax = "magma", 0.0, 1.0
+        plot_connectivity_circle(
+            arr, names, n_lines=n_lines, ax=ax, colormap=cmap, vmin=vmin, vmax=vmax,
+            facecolor="#0c141e", textcolor="#dfe7ef", node_edgecolor="#0c141e",
+            colorbar=True, interactive=False, show=False,
+            title=f"{self._conn_method.upper()} — {self._band}",
+        )
 
     def _plot_decoding(self, payload) -> None:
         import mne

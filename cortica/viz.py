@@ -74,7 +74,14 @@ def time_frequency(payload, picks=None, fmax=40.0, method="morlet"):
 
 
 #: Connectivity measures (display label -> mne-connectivity method name).
-CONNECTIVITY_METHODS = {"PLV": "plv", "Coherence": "coh", "wPLI": "wpli"}
+CONNECTIVITY_METHODS = {
+    "PLV": "plv",
+    "Coherence": "coh",
+    "wPLI": "wpli",
+    "Imag. coherence": "imcoh",
+    "PLI": "pli",
+    "ciPLV": "ciplv",
+}
 
 
 def connectivity(payload, method="plv", band="Alpha"):
@@ -93,6 +100,29 @@ def connectivity(payload, method="plv", band="Alpha"):
         matrix = matrix[:, :, 0]
     matrix = matrix + matrix.T  # returned lower-triangular; make it symmetric
     return matrix, list(payload.ch_names)
+
+
+def threshold_matrix(matrix, drop_fraction):
+    """Proportional (density) threshold: keep the strongest edges and zero out the
+    weakest ``drop_fraction`` of off-diagonal edges (ranked by absolute value).
+
+    ``drop_fraction`` in ``[0, 1)`` — ``0`` keeps every edge, ``0.9`` keeps only the
+    strongest 10%. Returns a symmetric copy. This ranks edges rather than comparing
+    to the peak, so it always thins the graph regardless of the absolute scale.
+    """
+    m = np.array(matrix, dtype=float)
+    if drop_fraction <= 0.0 or m.shape[0] < 2:
+        return m
+    iu = np.triu_indices(m.shape[0], 1)
+    weights = np.abs(m[iu])
+    keep = max(1, int(round((1.0 - drop_fraction) * weights.size)))
+    if keep >= weights.size:
+        return m
+    cutoff = np.sort(weights)[::-1][keep - 1]  # magnitude of the weakest kept edge
+    mask = np.abs(m) < cutoff
+    np.fill_diagonal(mask, False)
+    m[mask] = 0.0
+    return m
 
 
 #: Decoding classifiers (display label -> key).

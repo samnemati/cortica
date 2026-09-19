@@ -25,6 +25,7 @@ from cortica.viz import (  # noqa: E402
     source_localization,
     spectrum,
     temporal_generalization,
+    threshold_matrix,
     time_frequency,
     traces,
 )
@@ -110,11 +111,31 @@ def test_connectivity_methods_include_plv():
     assert "PLV" in CONNECTIVITY_METHODS
 
 
+def test_connectivity_methods_cover_the_full_set():
+    assert set(CONNECTIVITY_METHODS.values()) == {
+        "plv", "coh", "wpli", "imcoh", "pli", "ciplv"
+    }
+
+
 def test_connectivity_returns_a_channel_by_channel_matrix():
     epochs = FixedLengthEpochs().apply(eeg_sample(), {"duration": 1.0})
     matrix, names = connectivity(epochs.payload, method="plv", band="Alpha")
     assert len(names) == 10
     assert matrix.shape == (10, 10)
+
+
+def test_threshold_matrix_keeps_only_the_strongest_edges():
+    # off-diagonal edges are 0.2, 0.5, 0.9; drop the weakest ~2/3 -> keep the top one
+    m = np.array([[0.0, 0.2, 0.9], [0.2, 0.0, 0.5], [0.9, 0.5, 0.0]])
+    out = threshold_matrix(m, 0.66)
+    assert out[0, 2] == 0.9 and out[2, 0] == 0.9  # strongest kept, still symmetric
+    assert out[1, 2] == 0.0  # 0.5 dropped
+    assert out[0, 1] == 0.0  # 0.2 dropped
+
+
+def test_threshold_matrix_zero_fraction_keeps_everything():
+    m = np.array([[0.0, 0.2, 0.9], [0.2, 0.0, 0.5], [0.9, 0.5, 0.0]])
+    assert np.array_equal(threshold_matrix(m, 0.0), m)
 
 
 def test_decoding_returns_accuracy_over_time():
