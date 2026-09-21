@@ -117,8 +117,10 @@ def suggestions(dataset, pipeline=None):
         ]
     else:
         out = []
-    # Drop step suggestions already in the pipeline, so the list shrinks as you build.
-    return [s for s in out if not (s.kind == "step" and s.target in have)]
+    # Drop suggestions whose target is already in the pipeline: added steps, and the
+    # "Fit ICA…" action once an ICA step exists (its target "ica" is a step id too).
+    # View/action targets like conn/decoding/open/source are never step ids, so kept.
+    return [s for s in out if s.target not in have]
 
 
 def _eeg_raw_suggestions(payload, have):

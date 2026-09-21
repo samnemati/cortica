@@ -72,6 +72,16 @@ def test_added_steps_drop_out_of_suggestions():
     assert "epochs_events" not in after
 
 
+def test_fit_ica_suggestion_drops_once_ica_is_added():
+    from cortica.core.pipeline import Pipeline
+
+    ds = eeg_sample()
+    pipe = Pipeline("eeg")
+    assert "ica" in [s.target for s in suggestions(ds, pipe)]  # Fit ICA... suggested
+    pipe.add("ica")
+    assert "ica" not in [s.target for s in suggestions(ds, pipe)]  # gone after adding
+
+
 def test_fnirs_raw_suggests_optical_density_first():
     targets = [s.target for s in suggestions(fnirs_sample(), None)]
     assert targets[0] == "optical_density"
