@@ -216,6 +216,35 @@ def cluster_test(epochs, n_permutations=200):
     return np.asarray(epochs.times), a.mean(axis=0), b.mean(axis=0), significant, labels
 
 
+def spatiotemporal_cluster_test(epochs, n_permutations=200):
+    """Channels x time cluster-permutation test between the two conditions, so
+    significant clusters localize to both channels and time.
+
+    Returns ``(times, ch_names, stat, significant)`` where ``stat`` (the F map) and
+    ``significant`` (boolean) are both shaped ``(n_channels, n_times)``.
+    """
+    from mne.channels import find_ch_adjacency
+    from mne.stats import spatio_temporal_cluster_test
+
+    labels = list(epochs.event_id)
+    if len(labels) < 2:
+        raise ValueError("Statistics need two conditions.")
+    # each condition -> (n_epochs, n_times, n_channels), as the cluster test expects
+    a = epochs[labels[0]].get_data().transpose(0, 2, 1)
+    b = epochs[labels[1]].get_data().transpose(0, 2, 1)
+    adjacency, _ = find_ch_adjacency(epochs.info, ch_type="eeg")
+    stat, clusters, p_values, _ = spatio_temporal_cluster_test(
+        [a, b], adjacency=adjacency, n_permutations=n_permutations, seed=97,
+        out_type="mask", verbose=False,
+    )
+    significant = np.zeros(stat.shape, dtype=bool)  # (n_times, n_channels)
+    for cluster, p in zip(clusters, p_values):
+        if p < 0.05:
+            significant |= np.asarray(cluster)
+    # transpose to (n_channels, n_times) so channels are rows for an image
+    return np.asarray(epochs.times), list(epochs.ch_names), stat.T, significant.T
+
+
 def condition_comparison(epochs):
     """Per-condition average time course (channels averaged) for every condition in
     ``epochs``, plus the difference wave when there are exactly two. Returns

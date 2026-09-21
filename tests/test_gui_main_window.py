@@ -332,6 +332,17 @@ def test_statistics_view_renders_with_multi_condition_epochs(qtbot):
     assert w._view_mode == "stats"
 
 
+def test_statistics_spatiotemporal_mode_renders(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_events", {"tmin": -0.1, "tmax": 0.4})
+    w.state.run_sync()
+    w._set_view("stats")
+    w.stats_mode_selector.setCurrentText("Spatiotemporal")  # channels x time map, must render
+    assert w._stats_mode == "spatiotemporal"
+
+
 def test_comparison_view_renders_with_multi_condition_epochs(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)

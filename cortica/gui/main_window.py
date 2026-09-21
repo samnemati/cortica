@@ -116,6 +116,7 @@ class MainWindow(QMainWindow):
         self._conn_cache = None  # (payload, (method, band), matrix, names)
         self._decode_mode = "time"
         self._decode_classifier = "logreg"
+        self._stats_mode = "averaged"
         self._source_result = None
         self._source_busy = False
         self._src_signals = None
@@ -283,6 +284,13 @@ class MainWindow(QMainWindow):
         self.classifier_selector.addItems(list(viz.DECODE_CLASSIFIERS))
         self.classifier_selector.currentTextChanged.connect(self._on_classifier_changed)
         view_row.addWidget(self.classifier_selector)
+        # Statistics-only control (hidden unless the statistics view is active).
+        self.stats_mode_label = QLabel("Test:")
+        view_row.addWidget(self.stats_mode_label)
+        self.stats_mode_selector = QComboBox()
+        self.stats_mode_selector.addItems(["Channel-averaged", "Spatiotemporal"])
+        self.stats_mode_selector.currentTextChanged.connect(self._on_stats_mode_changed)
+        view_row.addWidget(self.stats_mode_selector)
         view_row.addStretch(1)
         # A Save-figure button lives right above the plot it saves, so it is always
         # visible regardless of how wide the toolbar is.
@@ -815,6 +823,11 @@ class MainWindow(QMainWindow):
         if self._view_mode == "decoding":
             self._replot()
 
+    def _on_stats_mode_changed(self, text: str) -> None:
+        self._stats_mode = "spatiotemporal" if text == "Spatiotemporal" else "averaged"
+        if self._view_mode == "stats":
+            self._replot()
+
     def _update_view_controls(self) -> None:
         view = self._view_mode
         for widget in (self.band_label, self.band_selector):
@@ -830,6 +843,8 @@ class MainWindow(QMainWindow):
         for widget in (self.decode_mode_label, self.decode_mode_selector,
                        self.classifier_label, self.classifier_selector):
             widget.setVisible(view == "decoding")
+        for widget in (self.stats_mode_label, self.stats_mode_selector):
+            widget.setVisible(view == "stats")
 
     def _show_computing(self, message: str) -> None:
         """Paint a 'Computing…' notice on the plot and show a wait cursor before a
@@ -1132,20 +1147,12 @@ class MainWindow(QMainWindow):
             return
         self._show_computing("Computing cluster permutation test…")
         try:
-            times, mean_a, mean_b, significant, labels = viz.cluster_test(payload)
             self._mpl_fig.clear()
             ax = self._mpl_fig.add_subplot(111)
-            ax.plot(times, mean_a * 1e6, label=labels[0])
-            ax.plot(times, mean_b * 1e6, label=labels[1])
-            lo, hi = ax.get_ylim()
-            if significant.any():
-                ax.fill_between(times, lo, hi, where=significant, color="0.7",
-                                alpha=0.4, step="mid", label="p < 0.05")
-                ax.set_ylim(lo, hi)
-            ax.set_xlabel("Time (s)")
-            ax.set_ylabel("Amplitude (µV)")
-            ax.set_title("Condition comparison (cluster permutation)")
-            ax.legend(loc="upper right", fontsize=8)
+            if self._stats_mode == "spatiotemporal":
+                self._draw_spatiotemporal_stats(ax, payload)
+            else:
+                self._draw_averaged_stats(ax, payload)
             self.statusBar().showMessage("Cluster permutation test complete")
         except Exception as exc:
             self._mpl_fig.clear()
@@ -1156,6 +1163,38 @@ class MainWindow(QMainWindow):
         finally:
             self._done_computing()
         self._mpl_canvas.draw_idle()
+
+    def _draw_averaged_stats(self, ax, payload) -> None:
+        times, mean_a, mean_b, significant, labels = viz.cluster_test(payload)
+        ax.plot(times, mean_a * 1e6, label=labels[0])
+        ax.plot(times, mean_b * 1e6, label=labels[1])
+        lo, hi = ax.get_ylim()
+        if significant.any():
+            ax.fill_between(times, lo, hi, where=significant, color="0.7",
+                            alpha=0.4, step="mid", label="p < 0.05")
+            ax.set_ylim(lo, hi)
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Amplitude (µV)")
+        ax.set_title("Condition comparison (cluster permutation)")
+        ax.legend(loc="upper right", fontsize=8)
+
+    def _draw_spatiotemporal_stats(self, ax, payload) -> None:
+        times, names, stat, significant = viz.spatiotemporal_cluster_test(payload)
+        channels = np.arange(len(names))
+        image = ax.imshow(
+            stat, aspect="auto", origin="lower", cmap="viridis",
+            extent=[times[0], times[-1], -0.5, len(names) - 0.5],
+        )
+        if significant.any():
+            ax.contour(
+                times, channels, significant.astype(float), levels=[0.5],
+                colors="red", linewidths=1.2,
+            )
+        ax.set_yticks(channels)
+        ax.set_yticklabels(names, fontsize=7)
+        ax.set_xlabel("Time (s)")
+        ax.set_title("Spatiotemporal cluster test (F map; red outlines p < 0.05)")
+        self._mpl_fig.colorbar(image, ax=ax, label="F")
 
     def _plot_source(self) -> None:
         self._mpl_fig.clear()

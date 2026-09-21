@@ -23,6 +23,7 @@ from cortica.viz import (  # noqa: E402
     decoding,
     decoding_csp,
     source_localization,
+    spatiotemporal_cluster_test,
     spectrum,
     temporal_generalization,
     threshold_matrix,
@@ -172,6 +173,15 @@ def test_cluster_test_returns_condition_means_and_mask():
     times, mean_a, mean_b, sig, labels = cluster_test(epochs, n_permutations=100)
     assert len(mean_a) == len(mean_b) == len(sig) == len(times)
     assert len(labels) == 2
+
+
+def test_spatiotemporal_cluster_returns_channel_by_time_maps():
+    epochs = EventEpochs().apply(eeg_sample(), {"tmin": -0.1, "tmax": 0.4}).payload
+    times, names, stat, significant = spatiotemporal_cluster_test(epochs, n_permutations=100)
+    assert len(names) == 10
+    assert stat.shape == (10, len(times))
+    assert significant.shape == (10, len(times))
+    assert significant.dtype == bool
 
 
 def test_condition_comparison_returns_means_and_difference():
