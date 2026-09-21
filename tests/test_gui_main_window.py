@@ -437,6 +437,29 @@ def test_export_report_writes_html(qtbot, tmp_path):
     assert "Band-pass filter" in out.read_text()
 
 
+def test_export_values_writes_band_power_csv_by_default(qtbot, tmp_path):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()  # time-series view -> band-power export
+    out = tmp_path / "vals.csv"
+    w._export_values_to(str(out))
+    assert out.exists()
+    assert out.read_text().splitlines()[0] == "channel,Delta,Theta,Alpha,Beta,Gamma"
+
+
+def test_export_values_writes_connectivity_csv_on_the_conn_view(qtbot, tmp_path):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_fixed", {"duration": 1.0})
+    w.state.run_sync()
+    w._set_view("conn")
+    out = tmp_path / "conn.csv"
+    w._export_values_to(str(out))
+    assert out.exists()
+    assert out.read_text().splitlines()[0].startswith("channel_a,channel_b")
+
+
 def test_save_figure_button_is_present_in_the_view_row(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)

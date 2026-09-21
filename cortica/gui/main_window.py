@@ -290,6 +290,13 @@ class MainWindow(QMainWindow):
         self.save_fig_button.setToolTip("Save the current view as SVG (vector) or PNG (raster)")
         self.save_fig_button.clicked.connect(self._save_figure)
         view_row.addWidget(self.save_fig_button)
+        self.export_values_button = QPushButton("Export values…")
+        self.export_values_button.setToolTip(
+            "Export the numbers behind this view as CSV "
+            "(connectivity pairs on the Connectivity view, otherwise band power per channel)"
+        )
+        self.export_values_button.clicked.connect(self._export_values)
+        view_row.addWidget(self.export_values_button)
         center_layout.addLayout(view_row)
 
         self.plot = pg.PlotWidget()
@@ -652,6 +659,46 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Figure saved to {path}")
         except Exception as exc:
             self.statusBar().showMessage(f"Could not save figure: {exc}")
+
+    # ---- export values ------------------------------------------------------
+    def _export_values(self) -> None:
+        import mne
+
+        ds = self.state.current()
+        payload = getattr(ds, "payload", None) if ds else None
+        if payload is None or not hasattr(payload, "get_data"):
+            self.statusBar().showMessage("Load a recording first.")
+            return
+        if self._view_mode == "conn" and isinstance(payload, mne.BaseEpochs):
+            default = f"cortica-connectivity-{self._conn_method}-{self._band}.csv"
+        else:
+            default = "cortica-band-power.csv"
+        path, _ = QFileDialog.getSaveFileName(self, "Export values", default, "CSV (*.csv)")
+        if path:
+            self._export_values_to(path)
+
+    def _export_values_to(self, path: str) -> None:
+        import mne
+
+        from .. import features
+
+        ds = self.state.current()
+        payload = getattr(ds, "payload", None) if ds else None
+        if payload is None:
+            self.statusBar().showMessage("Load a recording first.")
+            return
+        try:
+            if self._view_mode == "conn" and isinstance(payload, mne.BaseEpochs):
+                features.write_connectivity_csv(
+                    payload, path, method=self._conn_method, band=self._band
+                )
+                what = "connectivity values"
+            else:
+                features.write_band_power_csv(payload, path)
+                what = "band power"
+            self.statusBar().showMessage(f"Exported {what} to {path}")
+        except Exception as exc:
+            self.statusBar().showMessage(f"Could not export values: {exc}")
 
     # ---- ICA ----------------------------------------------------------------
     def _fit_ica(self) -> None:

@@ -33,7 +33,8 @@ htmlcov/
 # App artifacts
 *.log
 
-# Report and figure exports (default file names Cortica writes)
+# Report, figure, and value exports (default file names Cortica writes)
 cortica-*.html
 cortica-*.svg
 cortica-*.png
+cortica-*.csv
