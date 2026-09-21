@@ -58,6 +58,20 @@ def test_eeg_sample_already_has_montage_so_none_is_suggested():
     assert "epochs_events" in targets
 
 
+def test_added_steps_drop_out_of_suggestions():
+    from cortica.core.pipeline import Pipeline
+
+    ds = eeg_sample()
+    pipe = Pipeline("eeg")
+    before = [s.target for s in suggestions(ds, pipe)]
+    assert "bandpass_filter" in before and "epochs_events" in before
+    pipe.add("bandpass_filter")
+    pipe.add("epochs_events")
+    after = [s.target for s in suggestions(ds, pipe)]
+    assert "bandpass_filter" not in after  # already added -> no longer suggested
+    assert "epochs_events" not in after
+
+
 def test_fnirs_raw_suggests_optical_density_first():
     targets = [s.target for s in suggestions(fnirs_sample(), None)]
     assert targets[0] == "optical_density"

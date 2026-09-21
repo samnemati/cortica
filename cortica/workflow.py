@@ -87,18 +87,18 @@ def suggestions(dataset, pipeline=None):
         return [
             Suggestion(
                 "Load a recording", "action", "open",
-                "Open your EEG or fNIRS file — or load a sample to explore.",
+                "Open your EEG or fNIRS file, or load a sample to explore.",
             )
         ]
     modality = getattr(dataset, "modality", "eeg")
     have = {s.step_id for s in getattr(pipeline, "steps", [])} if pipeline else set()
 
     if kind == "raw" and modality == "fnirs":
-        return _fnirs_raw_suggestions(have)
-    if kind == "raw":
-        return _eeg_raw_suggestions(payload, have)
-    if kind == "epochs":
-        return [
+        out = _fnirs_raw_suggestions(have)
+    elif kind == "raw":
+        out = _eeg_raw_suggestions(payload, have)
+    elif kind == "epochs":
+        out = [
             Suggestion("Average (evoked)", "step", "average",
                        "Average epochs into an evoked response (ERP/ERF)."),
             Suggestion("Compare conditions", "view", "compare",
@@ -108,14 +108,17 @@ def suggestions(dataset, pipeline=None):
             Suggestion("Connectivity", "view", "conn",
                        "Measure functional coupling between channels."),
         ]
-    if kind == "evoked":
-        return [
+    elif kind == "evoked":
+        out = [
             Suggestion("Localize sources…", "action", "source",
                        "Estimate the cortical origin on the fsaverage template."),
             Suggestion("Preview report", "action", "preview",
                        "Open the shareable HTML report in your browser."),
         ]
-    return []
+    else:
+        out = []
+    # Drop step suggestions already in the pipeline, so the list shrinks as you build.
+    return [s for s in out if not (s.kind == "step" and s.target in have)]
 
 
 def _eeg_raw_suggestions(payload, have):
@@ -138,7 +141,7 @@ def _fnirs_raw_suggestions(have):
     if "optical_density" not in have:
         out.append(Suggestion(
             "Optical density", "step", "optical_density",
-            "Convert raw light intensity to optical density — the first fNIRS step.",
+            "Convert raw light intensity to optical density; the first fNIRS step.",
         ))
     else:
         if "scalp_coupling_index" not in have:
