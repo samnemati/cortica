@@ -46,6 +46,17 @@ def test_run_executes_steps_in_order(registry):
     assert out.payload == 16  # (2 * 3) + 10 — order matters
 
 
+def test_run_reports_progress_before_each_step(registry):
+    p = Pipeline("eeg").add("scale", {"factor": 3}).add("add_n", {"n": 10})
+    calls = []
+    p.run(
+        Dataset(2, "eeg"),
+        registry,
+        progress=lambda i, total, name: calls.append((i, total, name)),
+    )
+    assert calls == [(0, 2, "Scale"), (1, 2, "Add N")]
+
+
 def test_run_records_validated_history(registry):
     p = Pipeline("eeg").add("scale", {"factor": 3})
     out = p.run(Dataset(2, "eeg"), registry)

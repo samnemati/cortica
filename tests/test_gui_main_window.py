@@ -366,6 +366,17 @@ def test_action_driven_source_view_syncs_the_dropdown(qtbot):
     assert w.view_selector.currentText() == "Source"
 
 
+def test_busy_indicator_sets_and_restores_the_cursor(qtbot):
+    from PySide6.QtWidgets import QApplication
+
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._show_computing("Computing…")
+    assert QApplication.overrideCursor() is not None  # user sees a wait cursor
+    w._done_computing()
+    assert QApplication.overrideCursor() is None  # restored afterwards
+
+
 def test_workflow_guide_populates_after_load(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)

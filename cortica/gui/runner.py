@@ -5,12 +5,22 @@ a zero-delay timer so a caller can connect to the signals before it fires.
 """
 from __future__ import annotations
 
+import inspect
+
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal, Slot
 
 
 class WorkerSignals(QObject):
-    finished = Signal(object)  # emits the callable's return value
-    failed = Signal(str)       # emits the error message
+    finished = Signal(object)      # emits the callable's return value
+    failed = Signal(str)           # emits the error message
+    progress = Signal(int, int, str)  # (index, total, label) for live status
+
+
+def _accepts_progress(fn) -> bool:
+    try:
+        return "progress" in inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return False
 
 
 class _Worker(QRunnable):
@@ -22,7 +32,10 @@ class _Worker(QRunnable):
     @Slot()
     def run(self):
         try:
-            result = self._fn()
+            if _accepts_progress(self._fn):
+                result = self._fn(progress=self._signals.progress.emit)
+            else:
+                result = self._fn()
         except Exception as exc:
             self._signals.failed.emit(str(exc))
         else:

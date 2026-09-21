@@ -30,15 +30,22 @@ class Pipeline:
         self.steps.append(PipelineStep(step_id, dict(params or {})))
         return self
 
-    def run(self, dataset, registry):
+    def run(self, dataset, registry, progress=None):
         """Execute every step in order, returning the final Dataset.
 
         Each step validates its own params and modality; a failing step raises
         (StepError/ParamError) and stops the run — the caller decides what to do.
+
+        ``progress``, if given, is called *before* each step as
+        ``progress(index, total, step_name)`` so a UI can report live per-step
+        status. It runs on whatever thread calls ``run``.
         """
         ds = dataset
-        for pstep in self.steps:
+        total = len(self.steps)
+        for index, pstep in enumerate(self.steps):
             step = registry.get(pstep.step_id)()
+            if progress is not None:
+                progress(index, total, getattr(step, "name", pstep.step_id))
             ds = step.apply(ds, pstep.params)
         return ds
 

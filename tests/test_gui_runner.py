@@ -23,3 +23,14 @@ def test_emits_failed_with_message_on_exception(qtbot):
     with qtbot.waitSignal(signals.failed, timeout=3000) as blocker:
         pass
     assert "nope" in blocker.args[0]
+
+
+def test_passes_a_progress_emitter_to_functions_that_accept_one(qtbot):
+    def work(progress):
+        progress(1, 3, "step")
+        return "ok"
+
+    signals = run_in_background(work)
+    with qtbot.waitSignal(signals.progress, timeout=3000) as blocker:
+        pass
+    assert blocker.args == [1, 3, "step"]

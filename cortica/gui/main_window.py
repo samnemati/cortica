@@ -421,23 +421,32 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Load a recording first.")
             return
         self.run_button.setEnabled(False)
+        self.run_button.setText("Running…")
         self.statusBar().showMessage("Running pipeline…")
         source, pipeline, registry = self.state.source, self.state.pipeline, self.state.registry
         # Keep the signals object alive until it fires; a local ref would be
         # garbage-collected before the queued cross-thread signal is delivered.
-        self._run_signals = run_in_background(lambda: pipeline.run(source, registry))
+        self._run_signals = run_in_background(
+            lambda progress: pipeline.run(source, registry, progress=progress)
+        )
+        self._run_signals.progress.connect(self._on_run_progress)
         self._run_signals.finished.connect(self._on_run_finished)
         self._run_signals.failed.connect(self._on_run_failed)
+
+    def _on_run_progress(self, index: int, total: int, name: str) -> None:
+        self.statusBar().showMessage(f"Running step {index + 1}/{total}: {name}…")
 
     def _on_run_finished(self, result) -> None:
         self.state.result = result
         self.state.resultChanged.emit()
         self.run_button.setEnabled(True)
+        self.run_button.setText("Run pipeline")
         self.statusBar().showMessage(f"Ran {len(self.state.pipeline.steps)} step(s).")
         self._run_signals = None
 
     def _on_run_failed(self, message: str) -> None:
         self.run_button.setEnabled(True)
+        self.run_button.setText("Run pipeline")
         self.statusBar().showMessage(f"Run failed: {message}")
         self._run_signals = None
 
@@ -631,6 +640,30 @@ class MainWindow(QMainWindow):
                        self.classifier_label, self.classifier_selector):
             widget.setVisible(view == "decoding")
 
+    def _show_computing(self, message: str) -> None:
+        """Paint a 'Computing…' notice on the plot and show a wait cursor before a
+        slow synchronous computation, so the user sees that work is under way.
+        """
+        from PySide6.QtCore import QEventLoop
+        from PySide6.QtWidgets import QApplication
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self._mpl_fig.clear()
+        ax = self._mpl_fig.add_subplot(111)
+        ax.set_axis_off()
+        ax.text(0.5, 0.5, message, ha="center", va="center", fontsize=13, color="#3f6fb0")
+        self._mpl_canvas.draw()
+        self.statusBar().showMessage(message)
+        # Flush paint events only — not user input — so the notice shows without
+        # letting queued clicks re-enter mid-computation.
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+
+    def _done_computing(self) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        if QApplication.overrideCursor() is not None:
+            QApplication.restoreOverrideCursor()
+
     def _replot(self) -> None:
         ds = self.state.current()
         payload = getattr(ds, "payload", None) if ds else None
@@ -721,9 +754,12 @@ class MainWindow(QMainWindow):
             self._mpl_canvas.draw_idle()
             return
         try:
+            self._show_computing("Computing time-frequency…")
             times, freqs, power = viz.time_frequency(
                 payload, picks=picks, fmax=40.0, method=self._tfr_method
             )
+            self._mpl_fig.clear()
+            ax = self._mpl_fig.add_subplot(111)
             image = ax.imshow(
                 power, aspect="auto", origin="lower", cmap="RdBu_r",
                 extent=[times[0], times[-1], freqs[0], freqs[-1]],
@@ -733,10 +769,13 @@ class MainWindow(QMainWindow):
             ax.set_title("Time-frequency power (mean of selected channels)")
             self._mpl_fig.colorbar(image, ax=ax)
         except Exception as exc:
-            ax.clear()
+            self._mpl_fig.clear()
+            ax = self._mpl_fig.add_subplot(111)
             ax.set_axis_off()
             ax.text(0.5, 0.5, "Time-frequency unavailable.", ha="center", va="center")
             self.statusBar().showMessage(f"Time-frequency: {exc}")
+        finally:
+            self._done_computing()
         self._mpl_canvas.draw_idle()
 
     def _plot_connectivity(self, payload) -> None:
@@ -755,6 +794,7 @@ class MainWindow(QMainWindow):
             return
         try:
             matrix, names = self._connectivity_data(payload)
+            self._mpl_fig.clear()  # drop any "Computing…" notice before drawing
             matrix = viz.threshold_matrix(matrix, self._conn_threshold)
             signed = float(np.nanmin(matrix)) < 0.0  # imcoh spans negative values
             if self._conn_style == "connectogram":
@@ -777,7 +817,11 @@ class MainWindow(QMainWindow):
         cache = self._conn_cache
         if cache is not None and cache[0] is payload and cache[1] == params:
             return cache[2], cache[3]
-        matrix, names = viz.connectivity(payload, method=self._conn_method, band=self._band)
+        self._show_computing(f"Computing {self._conn_method.upper()} connectivity ({self._band})…")
+        try:
+            matrix, names = viz.connectivity(payload, method=self._conn_method, band=self._band)
+        finally:
+            self._done_computing()
         self._conn_cache = (payload, params, matrix, names)
         return matrix, names
 
@@ -831,7 +875,13 @@ class MainWindow(QMainWindow):
             return
         chance = 1.0 / len(set(payload.events[:, 2]))
         clf = self._decode_classifier.upper()
+        mode_label = {
+            "generalization": "temporal generalization", "csp": "CSP",
+        }.get(self._decode_mode, "over time")
+        self._show_computing(f"Decoding — {mode_label} ({clf})…")
         try:
+            self._mpl_fig.clear()
+            ax = self._mpl_fig.add_subplot(111)
             if self._decode_mode == "generalization":
                 times, matrix = viz.temporal_generalization(payload, classifier=clf.lower())
                 spread = max(float(np.abs(matrix - chance).max()), 0.01)
@@ -865,10 +915,13 @@ class MainWindow(QMainWindow):
                 ax.set_title(f"Decoding over time — {clf}")
                 ax.legend(loc="upper right", fontsize=8)
         except Exception as exc:
-            ax.clear()
+            self._mpl_fig.clear()
+            ax = self._mpl_fig.add_subplot(111)
             ax.set_axis_off()
             ax.text(0.5, 0.5, "Decoding unavailable.", ha="center", va="center")
             self.statusBar().showMessage(f"Decoding: {exc}")
+        finally:
+            self._done_computing()
         self._mpl_fig.tight_layout()
         self._mpl_canvas.draw_idle()
 
@@ -883,8 +936,11 @@ class MainWindow(QMainWindow):
                     ha="center", va="center")
             self._mpl_canvas.draw_idle()
             return
+        self._show_computing("Computing cluster permutation test…")
         try:
             times, mean_a, mean_b, significant, labels = viz.cluster_test(payload)
+            self._mpl_fig.clear()
+            ax = self._mpl_fig.add_subplot(111)
             ax.plot(times, mean_a * 1e6, label=labels[0])
             ax.plot(times, mean_b * 1e6, label=labels[1])
             lo, hi = ax.get_ylim()
@@ -897,10 +953,13 @@ class MainWindow(QMainWindow):
             ax.set_title("Condition comparison (cluster permutation)")
             ax.legend(loc="upper right", fontsize=8)
         except Exception as exc:
-            ax.clear()
+            self._mpl_fig.clear()
+            ax = self._mpl_fig.add_subplot(111)
             ax.set_axis_off()
             ax.text(0.5, 0.5, "Statistics unavailable.", ha="center", va="center")
             self.statusBar().showMessage(f"Statistics: {exc}")
+        finally:
+            self._done_computing()
         self._mpl_canvas.draw_idle()
 
     def _plot_source(self) -> None:
