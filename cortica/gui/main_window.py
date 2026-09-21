@@ -71,6 +71,7 @@ class MainWindow(QMainWindow):
         self._connect_state()
         self._refresh_library()
         self._refresh_pipeline()
+        self._refresh_workflow()
         self._replot()
 
     # ---- construction -------------------------------------------------------
@@ -109,6 +110,17 @@ class MainWindow(QMainWindow):
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(8, 8, 8, 8)
+        left_layout.addWidget(QLabel("Workflow"))
+        self.stage_label = QLabel()
+        self.stage_label.setTextFormat(Qt.TextFormat.RichText)
+        left_layout.addWidget(self.stage_label)
+        self.next_steps_label = QLabel("Next steps")
+        left_layout.addWidget(self.next_steps_label)
+        self._next_container = QWidget()
+        self._next_layout = QVBoxLayout(self._next_container)
+        self._next_layout.setContentsMargins(0, 0, 0, 0)
+        self._next_layout.setSpacing(4)
+        left_layout.addWidget(self._next_container)
         left_layout.addWidget(QLabel("Step library"))
         self.library = QListWidget()
         self.library.itemDoubleClicked.connect(self._on_library_double_clicked)
@@ -255,8 +267,11 @@ class MainWindow(QMainWindow):
         self.state.sourceChanged.connect(self._refresh_library)
         self.state.sourceChanged.connect(self._refresh_channels)
         self.state.sourceChanged.connect(self._replot)
+        self.state.sourceChanged.connect(self._refresh_workflow)
         self.state.pipelineChanged.connect(self._refresh_pipeline)
+        self.state.pipelineChanged.connect(self._refresh_workflow)
         self.state.resultChanged.connect(self._replot)
+        self.state.resultChanged.connect(self._refresh_workflow)
 
     # ---- step library -------------------------------------------------------
     def _refresh_library(self) -> None:
@@ -276,6 +291,55 @@ class MainWindow(QMainWindow):
     def _add_from_item(self, item: QListWidgetItem) -> None:
         self.state.add_step(item.data(Qt.ItemDataRole.UserRole))
         self.statusBar().showMessage(f"Added {item.text()}")
+
+    # ---- guided workflow ----------------------------------------------------
+    def _refresh_workflow(self) -> None:
+        from .. import workflow
+
+        dataset = self.state.current()
+        marks = {
+            "done": ("✓", "#5fd3a6"),
+            "current": ("●", "#5ac8fa"),
+            "todo": ("○", "#8a99a8"),
+        }
+        rows = []
+        for _key, label, status in workflow.stage_status(dataset, self.state.pipeline):
+            glyph, color = marks[status]
+            shown = f"<b>{label}</b>" if status == "current" else label
+            rows.append(f'<span style="color:{color}">{glyph}&nbsp;{shown}</span>')
+        self.stage_label.setText("<br>".join(rows))
+
+        while self._next_layout.count():
+            widget = self._next_layout.takeAt(0).widget()
+            if widget is not None:
+                widget.deleteLater()
+        sugs = workflow.suggestions(dataset, self.state.pipeline)
+        self.next_steps_label.setVisible(bool(sugs))
+        for suggestion in sugs:
+            button = QPushButton(suggestion.label)
+            button.setToolTip(suggestion.reason)
+            button.setStyleSheet("text-align: left; padding: 4px 8px;")
+            button.clicked.connect(
+                lambda _=False, s=suggestion: self._apply_suggestion(s)
+            )
+            self._next_layout.addWidget(button)
+
+    def _apply_suggestion(self, suggestion) -> None:
+        if suggestion.kind == "step":
+            self.state.add_step(suggestion.target)
+            self.statusBar().showMessage(f"Added {suggestion.label}")
+        elif suggestion.kind == "view":
+            self._set_view(suggestion.target)
+        elif suggestion.kind == "action":
+            handler = {
+                "open": self._open,
+                "ica": self._fit_ica,
+                "source": self._localize_sources,
+                "preview": self._preview_report,
+                "export": self._export_report,
+            }.get(suggestion.target)
+            if handler is not None:
+                handler()
 
     # ---- channel selection --------------------------------------------------
     def _refresh_channels(self) -> None:

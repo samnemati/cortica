@@ -158,8 +158,10 @@ cortica            # launch the desktop app
 
 1. Click **Load EEG sample** in the toolbar (a 10-channel recording with an alpha
    rhythm and oddball events appears).
-2. In the **Step library** (left), double-click **Band-pass filter**, then **Epochs
-   (by events)**. They appear in the **Pipeline** panel (right).
+2. Follow the **Workflow guide** (top-left): click a **Next steps** button such as
+   **Band-pass filter**, then **Epochs (by events)** — each is added to the
+   **Pipeline** panel (right). (You can also double-click any step in the full
+   **Step library**.)
 3. Select a step in the pipeline to edit its parameters in the form below it.
 4. Click **Run pipeline**. The viewer updates with the result.
 5. Use the **View** dropdown (top) to explore: switch to **Power spectrum** to see
@@ -176,8 +178,12 @@ Cortica is a single window with three panes and a toolbar.
 
 - **Toolbar** — `Load EEG sample`, `Load fNIRS sample`, `Open…` (your own file),
   `Preview report`, `Export report…`, `Fit ICA…`, `Localize sources…`.
-- **Left pane** — the **Step library** (modality-aware; inapplicable steps are
-  greyed out) and a checkable **Channels** list that subsets every view.
+- **Left pane** — the **Workflow guide** (a stage tracker — Import → Preprocess →
+  Segment → Analyze → Report — showing where you are, plus a few data-aware **Next
+  steps** buttons that suggest what to do next and add it in one click), the
+  **Step library** (modality-aware; inapplicable steps are greyed out), and a
+  checkable **Channels** list that subsets every view. The guide suggests; it never
+  constrains — the full step library is always available.
 - **Center pane** — the **View** dropdown and the signal viewer. Extra controls
   appear here per view (band + threshold for head maps; measure + style + sparsity
   for connectivity; mode + classifier for decoding; method for time-frequency).
@@ -334,10 +340,10 @@ preprocessing (optical density, SCI, TDDR, Beer–Lambert); fixed and event-base
 epoching and averaging; and the full set of views above — spectra, band-power head
 maps, time-frequency, connectivity + connectogram, decoding (with classifier and
 mode choices), cluster statistics, condition comparison, and template source
-localization. Plus an in-app report preview and export.
+localization. Plus a guided workflow panel, an in-app report preview, and export.
 
-**On the roadmap:** a guided workflow stepper, a 3-D glass-brain source view,
-packaged installers (Briefcase), and the first PyPI release.
+**On the roadmap:** a 3-D glass-brain source view, packaged installers (Briefcase),
+and the first PyPI release.
 
 ---
 

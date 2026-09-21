@@ -333,6 +333,44 @@ def test_action_driven_source_view_syncs_the_dropdown(qtbot):
     assert w.view_selector.currentText() == "Source"
 
 
+def test_workflow_guide_populates_after_load(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    assert w.stage_label.text()  # the stage tracker rendered
+    assert w._next_layout.count() > 0  # at least one suggested next step
+
+
+def test_workflow_step_suggestion_adds_it_to_the_pipeline(qtbot):
+    from cortica.workflow import Suggestion
+
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w._apply_suggestion(Suggestion("Band-pass filter", "step", "bandpass_filter", ""))
+    assert w.state.pipeline.steps[-1].step_id == "bandpass_filter"
+
+
+def test_workflow_view_suggestion_switches_the_view(qtbot):
+    from cortica.workflow import Suggestion
+
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w._apply_suggestion(Suggestion("Decoding", "view", "decoding", ""))
+    assert w._view_mode == "decoding"
+
+
+def test_workflow_suggestions_update_when_data_becomes_epochs(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_events", {"tmin": -0.1, "tmax": 0.4})
+    w.state.run_sync()  # current() is now Epochs -> suggestions change
+    texts = [w._next_layout.itemAt(i).widget().text() for i in range(w._next_layout.count())]
+    assert any("Average" in t for t in texts)
+
+
 def test_apply_ica_choice_adds_an_ica_step(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)
