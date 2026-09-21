@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 class ICADialog(QDialog):
     def __init__(self, payload, n_components: int = 15, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Fit ICA — choose components to remove")
+        self.setWindowTitle("Fit ICA: choose components to remove")
 
         import mne
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg

@@ -35,8 +35,10 @@ _TRACE_COLORS = ["#2b6cb0", "#dd6b20", "#2f855a", "#c53030", "#6b46c1", "#2c7a7b
 
 #: A clean light theme for the Qt chrome (plots are styled separately to match).
 _STYLESHEET = """
-QMainWindow { background: #eef2f7; }
+QMainWindow, QDialog { background: #eef2f7; }
 QWidget { color: #1f2933; font-size: 13px; }
+QCheckBox { color: #1f2933; spacing: 5px; }
+QCheckBox:disabled { color: #a3adba; }
 QToolBar { background: #ffffff; border: none; border-bottom: 1px solid #d0d9e3;
            spacing: 4px; padding: 5px 8px; }
 QToolButton { color: #1f2933; padding: 6px 10px; border-radius: 6px; }
