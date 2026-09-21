@@ -94,6 +94,9 @@ _VIEWS = [
     ("Source", "source"),
 ]
 
+#: View modes rendered on the matplotlib canvas (the rest use pyqtgraph).
+_MPL_VIEWS = ("topo", "tfr", "conn", "decoding", "stats", "source", "compare")
+
 
 class MainWindow(QMainWindow):
     def __init__(self, state: AppState | None = None, parent=None):
@@ -112,6 +115,7 @@ class MainWindow(QMainWindow):
         self._decode_mode = "time"
         self._decode_classifier = "logreg"
         self._source_result = None
+        self._source_busy = False
         self._src_signals = None
         self._last_preview_path = None
         self.setWindowTitle("Cortica")
@@ -169,6 +173,9 @@ class MainWindow(QMainWindow):
         export_action = QAction("Export report…", self)
         export_action.triggered.connect(self._export_report)
         toolbar.addAction(export_action)
+        save_fig_action = QAction("Save figure…", self)
+        save_fig_action.triggered.connect(self._save_figure)
+        toolbar.addAction(save_fig_action)
         ica_action = QAction("Fit ICA…", self)
         ica_action.triggered.connect(self._fit_ica)
         toolbar.addAction(ica_action)
@@ -258,7 +265,7 @@ class MainWindow(QMainWindow):
         self.conn_threshold_slider.setValue(0)
         self.conn_threshold_slider.setFixedWidth(120)
         self.conn_threshold_slider.setToolTip(
-            "Hide the weakest edges — right shows only the strongest"
+            "Hide the weakest edges; right shows only the strongest"
         )
         self.conn_threshold_slider.valueChanged.connect(self._on_conn_threshold_changed)
         view_row.addWidget(self.conn_threshold_slider)
@@ -340,7 +347,7 @@ class MainWindow(QMainWindow):
         splitter.setSizes([250, 600, 320])
         self.setCentralWidget(splitter)
         self.statusBar().showMessage(
-            "Click “Load EEG sample” or “Load fNIRS sample” to try it — or Open your own recording."
+            "Click 'Load EEG sample' or 'Load fNIRS sample' to try it, or Open your own recording."
         )
 
     def _connect_state(self) -> None:
@@ -560,12 +567,20 @@ class MainWindow(QMainWindow):
 
     # ---- report -------------------------------------------------------------
     def _export_report(self) -> None:
+        from PySide6.QtWidgets import QInputDialog
+
+        from ..report import default_report_name
+
         if self.state.current() is None:
             self.statusBar().showMessage("Load a recording first.")
             return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export report", "cortica-report.html", "HTML (*.html)"
+        label, ok = QInputDialog.getText(
+            self, "Export report", "Optional label for this report (leave blank to skip):"
         )
+        if not ok:
+            return
+        default = default_report_name(self.state.pipeline, label=label.strip() or None)
+        path, _ = QFileDialog.getSaveFileName(self, "Export report", default, "HTML (*.html)")
         if path:
             self._export_report_to(path)
 
@@ -580,24 +595,58 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Report written to {path}")
 
     def _preview_report(self) -> None:
+        import os
         import tempfile
         import webbrowser
         from pathlib import Path
 
-        from ..report import build_report
+        from ..report import build_report, default_report_name
 
         dataset = self.state.current()
         if dataset is None:
             self.statusBar().showMessage("Load a recording first.")
             return
-        tmp = tempfile.NamedTemporaryFile(
-            prefix="cortica-report-", suffix=".html", delete=False
-        )
-        tmp.close()
-        build_report(dataset, self.state.pipeline, tmp.name)
-        self._last_preview_path = tmp.name
-        webbrowser.open(Path(tmp.name).as_uri())
+        path = os.path.join(tempfile.gettempdir(), default_report_name(self.state.pipeline))
+        build_report(dataset, self.state.pipeline, path)
+        self._last_preview_path = path
+        webbrowser.open(Path(path).as_uri())
         self.statusBar().showMessage("Opened report preview in your browser.")
+
+    # ---- save figure --------------------------------------------------------
+    def _default_figure_name(self, ext: str = "svg") -> str:
+        import datetime
+
+        stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        return f"cortica-{self._view_mode}-{stamp}.{ext}"
+
+    def _save_figure(self) -> None:
+        if self.state.current() is None:
+            self.statusBar().showMessage("Load a recording first.")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save figure", self._default_figure_name(),
+            "SVG vector (*.svg);;PNG image (*.png)",
+        )
+        if path:
+            self._save_figure_to(path)
+
+    def _save_figure_to(self, path: str) -> None:
+        try:
+            if self._view_mode in _MPL_VIEWS:
+                self._mpl_fig.savefig(
+                    path, dpi=200, bbox_inches="tight",
+                    facecolor=self._mpl_fig.get_facecolor(),
+                )
+            else:
+                import pyqtgraph.exporters as exporters
+
+                if path.lower().endswith(".svg"):
+                    exporters.SVGExporter(self.plot.plotItem).export(path)
+                else:
+                    exporters.ImageExporter(self.plot.plotItem).export(path)
+            self.statusBar().showMessage(f"Figure saved to {path}")
+        except Exception as exc:
+            self.statusBar().showMessage(f"Could not save figure: {exc}")
 
     # ---- ICA ----------------------------------------------------------------
     def _fit_ica(self) -> None:
@@ -627,23 +676,34 @@ class MainWindow(QMainWindow):
         ds = self.state.current()
         payload = getattr(ds, "payload", None) if ds else None
         if not isinstance(payload, mne.Evoked):
+            # Show the requirement in the plot area, not just the status bar, so the
+            # click clearly does something even when there is no evoked yet.
+            self._source_busy = False
+            self._source_result = None
+            self._set_view("source")
             self.statusBar().showMessage(
-                "Source localization needs an evoked — average epochs first."
+                "Source localization needs an averaged (evoked) response. "
+                "Add Epochs then Average, click Run, and try again."
             )
             return
-        self.statusBar().showMessage("Localizing sources (fsaverage template, ~10 s)…")
+        self._source_busy = True
+        self._set_view("source")  # paints a "Localizing…" notice in the plot area
+        self.statusBar().showMessage("Localizing sources on the fsaverage template…")
         self._src_signals = run_in_background(lambda: viz.source_localization(payload))
         self._src_signals.finished.connect(self._on_sources_ready)
         self._src_signals.failed.connect(self._on_sources_failed)
 
     def _on_sources_ready(self, result) -> None:
+        self._source_busy = False
         self._source_result = result
         self._src_signals = None
         self._set_view("source")
         self.statusBar().showMessage("Source localization complete.")
 
     def _on_sources_failed(self, message: str) -> None:
+        self._source_busy = False
         self._src_signals = None
+        self._set_view("source")
         self.statusBar().showMessage(f"Source localization: {message}")
 
     # ---- signal viewer ------------------------------------------------------
@@ -746,9 +806,7 @@ class MainWindow(QMainWindow):
     def _replot(self) -> None:
         ds = self.state.current()
         payload = getattr(ds, "payload", None) if ds else None
-        is_mpl = self._view_mode in (
-            "topo", "tfr", "conn", "decoding", "stats", "source", "compare"
-        )
+        is_mpl = self._view_mode in _MPL_VIEWS
         self.plot.setVisible(not is_mpl)
         self._mpl_canvas.setVisible(is_mpl)
         self._mpl_fig.set_facecolor("white")  # connectogram sets its own dark face
@@ -882,7 +940,7 @@ class MainWindow(QMainWindow):
             else:
                 self._plot_conn_matrix(matrix, names, signed)
             self.statusBar().showMessage(
-                f"{self._conn_method.upper()} connectivity ready — {self._band} band"
+                f"{self._conn_method.upper()} connectivity ready: {self._band} band"
             )
         except Exception as exc:
             self._mpl_fig.clear()
@@ -919,7 +977,7 @@ class MainWindow(QMainWindow):
         ax.set_yticks(range(len(names)))
         ax.set_xticklabels(names, rotation=90, fontsize=7)
         ax.set_yticklabels(names, fontsize=7)
-        ax.set_title(f"{self._conn_method.upper()} — {self._band}")
+        ax.set_title(f"{self._conn_method.upper()} ({self._band})")
         self._mpl_fig.colorbar(image, ax=ax)
 
     def _plot_connectogram(self, matrix, names, signed) -> None:
@@ -939,7 +997,7 @@ class MainWindow(QMainWindow):
             arr, names, n_lines=n_lines, ax=ax, colormap=cmap, vmin=vmin, vmax=vmax,
             facecolor="#0c141e", textcolor="#dfe7ef", node_edgecolor="#0c141e",
             colorbar=True, interactive=False, show=False,
-            title=f"{self._conn_method.upper()} — {self._band}",
+            title=f"{self._conn_method.upper()} ({self._band})",
         )
 
     def _plot_decoding(self, payload) -> None:
@@ -961,7 +1019,7 @@ class MainWindow(QMainWindow):
         mode_label = {
             "generalization": "temporal generalization", "csp": "CSP",
         }.get(self._decode_mode, "over time")
-        self._show_computing(f"Decoding — {mode_label} ({clf})…")
+        self._show_computing(f"Decoding: {mode_label} ({clf})…")
         try:
             self._mpl_fig.clear()
             ax = self._mpl_fig.add_subplot(111)
@@ -975,7 +1033,7 @@ class MainWindow(QMainWindow):
                 )
                 ax.set_xlabel("Test time (s)")
                 ax.set_ylabel("Train time (s)")
-                ax.set_title(f"Temporal generalization — {clf}")
+                ax.set_title(f"Temporal generalization ({clf})")
                 self._mpl_fig.colorbar(image, ax=ax, label="Accuracy")
             elif self._decode_mode == "csp":
                 acc = viz.decoding_csp(payload, classifier=clf.lower())
@@ -995,9 +1053,9 @@ class MainWindow(QMainWindow):
                 ax.axhline(chance, color="#8a99a8", linestyle="--", label="chance")
                 ax.set_xlabel("Time (s)")
                 ax.set_ylabel("Accuracy")
-                ax.set_title(f"Decoding over time — {clf}")
+                ax.set_title(f"Decoding over time ({clf})")
                 ax.legend(loc="upper right", fontsize=8)
-            self.statusBar().showMessage(f"Decoding complete — {mode_label} ({clf})")
+            self.statusBar().showMessage(f"Decoding complete: {mode_label} ({clf})")
         except Exception as exc:
             self._mpl_fig.clear()
             ax = self._mpl_fig.add_subplot(111)
@@ -1050,9 +1108,25 @@ class MainWindow(QMainWindow):
     def _plot_source(self) -> None:
         self._mpl_fig.clear()
         ax = self._mpl_fig.add_subplot(111)
+        if getattr(self, "_source_busy", False):
+            ax.set_axis_off()
+            ax.text(
+                0.5, 0.5,
+                "Localizing sources on the fsaverage template...\n"
+                "(the first run downloads about 1 GB, which can take a few minutes)",
+                ha="center", va="center",
+            )
+            self._mpl_canvas.draw_idle()
+            return
         if not self._source_result:
             ax.set_axis_off()
-            ax.text(0.5, 0.5, "Use “Localize sources…” on an evoked.", ha="center", va="center")
+            ax.text(
+                0.5, 0.5,
+                "Source localization needs an averaged (evoked) response.\n\n"
+                "Add 'Epochs (by events)' then 'Average', click Run,\n"
+                "then use 'Localize sources...' in the toolbar.",
+                ha="center", va="center",
+            )
             self._mpl_canvas.draw_idle()
             return
         names, strengths = self._source_result

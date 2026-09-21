@@ -8,9 +8,11 @@ import pytest
 
 mne = pytest.importorskip("mne")
 
+import datetime  # noqa: E402
+
 from cortica.core.pipeline import Pipeline  # noqa: E402
 from cortica.io import dataset_from_raw  # noqa: E402
-from cortica.report import build_report  # noqa: E402
+from cortica.report import build_report, default_report_name  # noqa: E402
 
 
 def _dataset():
@@ -58,6 +60,27 @@ def test_build_report_shows_evoked_with_gfp(tmp_path):
     out = tmp_path / "report.html"
     build_report(evoked, Pipeline("eeg"), str(out))
     assert "Evoked response" in out.read_text()
+
+
+def test_default_report_name_summarizes_steps_and_stamps_time():
+    pipe = Pipeline("eeg").add("bandpass_filter").add("average")
+    name = default_report_name(pipe, now=datetime.datetime(2026, 9, 21, 15, 30, 0))
+    assert name == "cortica-eeg-bp-avg-20260921-153000.html"
+
+
+def test_default_report_name_includes_a_user_label():
+    pipe = Pipeline("eeg").add("average")
+    name = default_report_name(
+        pipe, label="Subject 03 oddball", now=datetime.datetime(2026, 9, 21, 9, 5, 1)
+    )
+    assert name == "cortica-subject-03-oddball-eeg-avg-20260921-090501.html"
+
+
+def test_default_report_names_differ_by_time_so_reports_never_clobber():
+    pipe = Pipeline("eeg").add("average")
+    a = default_report_name(pipe, now=datetime.datetime(2026, 9, 21, 15, 30, 0))
+    b = default_report_name(pipe, now=datetime.datetime(2026, 9, 21, 15, 30, 1))
+    assert a != b
 
 
 def test_build_report_escapes_html_in_values(tmp_path):

@@ -437,6 +437,25 @@ def test_export_report_writes_html(qtbot, tmp_path):
     assert "Band-pass filter" in out.read_text()
 
 
+def test_save_figure_writes_svg_for_a_matplotlib_view(qtbot, tmp_path):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w._set_view("topo")  # a matplotlib view
+    out = tmp_path / "fig.svg"
+    w._save_figure_to(str(out))
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_save_figure_writes_png_for_the_timeseries_view(qtbot, tmp_path):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()  # time series (pyqtgraph) is the default view
+    out = tmp_path / "fig.png"
+    w._save_figure_to(str(out))
+    assert out.exists() and out.stat().st_size > 0
+
+
 def test_preview_report_builds_and_opens_in_browser(qtbot, monkeypatch):
     import webbrowser
     from pathlib import Path
