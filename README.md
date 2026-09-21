@@ -11,12 +11,12 @@
 
 Cortica is a cross-platform desktop app for analyzing **EEG and fNIRS** recordings.
 Its one idea: **every action you take in the GUI is recorded as a step in a
-re-runnable pipeline.** Reproducibility and a shareable report then come for free —
+re-runnable pipeline.** Reproducibility and a shareable report then come for free -
 the same pipeline you built by clicking can be saved as a small YAML file, re-run
 headless on new data, and rendered into a self-contained HTML report.
 
-It is built on [MNE-Python](https://mne.tools) — the standard scientific engine for
-both EEG and fNIRS — so Cortica focuses on the *workbench* (the guided UI, the
+It is built on [MNE-Python](https://mne.tools) - the standard scientific engine for
+both EEG and fNIRS - so Cortica focuses on the *workbench* (the guided UI, the
 pipeline, the report) rather than reinventing the science underneath.
 
 <p align="center">
@@ -51,16 +51,16 @@ pipeline, the report) rather than reinventing the science underneath.
 Powerful toolkits already exist (MNE-Python, MNELAB, EEGLAB, Brainstorm). Cortica's
 niche is the *combination*:
 
-- **Unified EEG + fNIRS.** One coherent tool for both — including studies that record
+- **Unified EEG + fNIRS.** One coherent tool for both - including studies that record
   them together. Every step declares which modalities it supports, and the UI greys
   out steps that don't apply to the data you loaded (ICA is EEG-only; Beer–Lambert,
   scalp-coupling and TDDR are fNIRS-only).
-- **Guided, but not rigid.** A natural workflow — import → signal check → preprocess
-  → segment → analyze → report — that newcomers can follow and power users can step
+- **Guided, but not rigid.** A natural workflow - import → signal check → preprocess
+  → segment → analyze → report - that newcomers can follow and power users can step
   outside of.
 - **Reproducible by construction.** The pipeline *is* the source of truth. Save it as
   YAML, re-run it headless, or hand it to a colleague. What you see is what you
-  publish — there is no hidden manual step between your analysis and your report.
+  publish - there is no hidden manual step between your analysis and your report.
 - **Free to install and share.** Pure pip/conda distribution, no paid signing
   certificates required.
 
@@ -100,10 +100,10 @@ need a particular kind of data and tell you when they do.
 |---|---|---|
 | **Time series** | any | Stacked channel traces, with per-channel selection |
 | **Power spectrum** | any | Power spectral density per channel (PSD) |
-| **Topography** | montage | Colorful band-power head map — pick the band (δ/θ/α/β/γ), a channel subset, and a threshold |
+| **Topography** | montage | Colorful band-power head map - pick the band (δ/θ/α/β/γ), a channel subset, and a threshold |
 | **Time-frequency** | any | Morlet or multitaper spectrogram of the selected channels |
-| **Connectivity** | epochs | Channel×channel coupling as a **matrix** or a **connectogram** — 6 measures (PLV, coherence, wPLI, imaginary coherence, PLI, ciPLV), a band selector, and a sparsity slider to keep only the strongest edges |
-| **Decoding** | epochs, ≥2 conditions | Cross-validated MVPA: **over time**, a **temporal-generalization** matrix, or **CSP** — each with a choice of classifier (logistic regression, LDA, SVM) |
+| **Connectivity** | epochs | Channel×channel coupling as a **matrix** or a **connectogram** - 6 measures (PLV, coherence, wPLI, imaginary coherence, PLI, ciPLV), a band selector, and a sparsity slider to keep only the strongest edges |
+| **Decoding** | epochs, ≥2 conditions | Cross-validated MVPA: **over time**, a **temporal-generalization** matrix, or **CSP** - each with a choice of classifier (logistic regression, LDA, SVM) |
 | **Statistics** | epochs, 2 conditions | Cluster-based permutation test between conditions, with significant time windows shaded |
 | **Comparison** | epochs, ≥2 conditions | Overlaid per-condition ERPs plus the difference wave |
 | **Source** | evoked | Cortical source estimate on the fsaverage template (dSPM), summarized as the most active anatomical regions |
@@ -115,7 +115,7 @@ Frequency bands used throughout: **Delta** (1–4 Hz), **Theta** (4–8), **Alph
 
 ## Install
 
-Cortica installs with plain `pip` — because pip-installed packages are not
+Cortica installs with plain `pip` - because pip-installed packages are not
 quarantined, there is **no macOS Gatekeeper prompt** and nothing to sign.
 
 **From source (works today):**
@@ -149,7 +149,7 @@ stack (`mne`, `mne-nirs`, `mne-connectivity`). The `[gui]` extra adds `PySide6` 
 
 ## Quick start
 
-You don't need any data to try it — Cortica ships with synthetic EEG and fNIRS
+You don't need any data to try it - Cortica ships with synthetic EEG and fNIRS
 samples.
 
 ```bash
@@ -159,7 +159,7 @@ cortica            # launch the desktop app
 1. Click **Load EEG sample** in the toolbar (a 10-channel recording with an alpha
    rhythm and oddball events appears).
 2. Follow the **Workflow guide** (top-left): click a **Next steps** button such as
-   **Band-pass filter**, then **Epochs (by events)** — each is added to the
+   **Band-pass filter**, then **Epochs (by events)** - each is added to the
    **Pipeline** panel (right). (You can also double-click any step in the full
    **Step library**.)
 3. Select a step in the pipeline to edit its parameters in the form below it.
@@ -176,18 +176,18 @@ cortica            # launch the desktop app
 
 Cortica is a single window with three panes and a toolbar.
 
-- **Toolbar** — `Load EEG sample`, `Load fNIRS sample`, `Open…` (your own file),
+- **Toolbar** - `Load EEG sample`, `Load fNIRS sample`, `Open…` (your own file),
   `Preview report`, `Export report…`, `Fit ICA…`, `Localize sources…`.
-- **Left pane** — the **Workflow guide** (a stage tracker — Import → Preprocess →
-  Segment → Analyze → Report — showing where you are, plus a few data-aware **Next
+- **Left pane** - the **Workflow guide** (a stage tracker - Import → Preprocess →
+  Segment → Analyze → Report - showing where you are, plus a few data-aware **Next
   steps** buttons that suggest what to do next and add it in one click), the
   **Step library** (modality-aware; inapplicable steps are greyed out), and a
   checkable **Channels** list that subsets every view. The guide suggests; it never
-  constrains — the full step library is always available.
-- **Center pane** — the **View** dropdown and the signal viewer. Extra controls
+  constrains - the full step library is always available.
+- **Center pane** - the **View** dropdown and the signal viewer. Extra controls
   appear here per view (band + threshold for head maps; measure + style + sparsity
   for connectivity; mode + classifier for decoding; method for time-frequency).
-- **Right pane** — the **Pipeline** (ordered steps, with ↑/↓/Remove), the parameter
+- **Right pane** - the **Pipeline** (ordered steps, with ↑/↓/Remove), the parameter
   form for the selected step, and the **Run pipeline** button.
 
 Because it is an ordinary installed program, close it and relaunch with `cortica`;
@@ -216,12 +216,12 @@ Raw (continuous)  ──Epochs step──▶  Epochs  ──Average step──�
 
 <table>
   <tr>
-    <td width="50%"><img alt="Topographic head map" src="docs/images/topomap.png"><br><em>Topography — colorful band-power head map</em></td>
-    <td width="50%"><img alt="Power spectrum" src="docs/images/spectrum.png"><br><em>Power spectrum — PSD per channel</em></td>
+    <td width="50%"><img alt="Topographic head map" src="docs/images/topomap.png"><br><em>Topography - colorful band-power head map</em></td>
+    <td width="50%"><img alt="Power spectrum" src="docs/images/spectrum.png"><br><em>Power spectrum - PSD per channel</em></td>
   </tr>
   <tr>
-    <td width="50%"><img alt="Connectogram" src="docs/images/connectogram.png"><br><em>Connectivity — connectogram (circular graph)</em></td>
-    <td width="50%"><img alt="Temporal generalization decoding" src="docs/images/decoding.png"><br><em>Decoding — temporal-generalization matrix</em></td>
+    <td width="50%"><img alt="Connectogram" src="docs/images/connectogram.png"><br><em>Connectivity - connectogram (circular graph)</em></td>
+    <td width="50%"><img alt="Temporal generalization decoding" src="docs/images/decoding.png"><br><em>Decoding - temporal-generalization matrix</em></td>
   </tr>
 </table>
 
@@ -230,7 +230,7 @@ Raw (continuous)  ──Epochs step──▶  Epochs  ──Average step──�
 ## Reproducible pipelines & the CLI
 
 A pipeline is a plain, human-readable YAML file listing ordered steps. The GUI can
-write it as you work, and the exact same file re-runs headless — that is the
+write it as you work, and the exact same file re-runs headless - that is the
 reproducibility guarantee in practice.
 
 ```yaml
@@ -303,11 +303,11 @@ Motion correction (TDDR) → Band-pass filter → Beer–Lambert law → Epochs 
 Cortica is layered so the science is testable without a GUI:
 
 ```
-core/    headless engine — Dataset, Step, Pipeline, registry (no Qt)
+core/    headless engine - Dataset, Step, Pipeline, registry (no Qt)
 steps/   MNE-backed analysis steps (lazy MNE import, self-registering)
 viz.py   pure, Qt-free data-prep for every view (tested in CI)
 report/  HTML report builder (pipeline + provenance + figures)
-gui/     PySide6 desktop app — orchestrates the above, never analyzes
+gui/     PySide6 desktop app - orchestrates the above, never analyzes
 ```
 
 ```bash
@@ -332,12 +332,12 @@ for the full design and [`RUNNING.md`](RUNNING.md) for run/relaunch notes.
 
 ## Project status
 
-**Pre-alpha, under active development** — but already end-to-end and fully tested.
+**Pre-alpha, under active development** - but already end-to-end and fully tested.
 
 **Working today:** the reproducible-pipeline engine and CLI; EEG preprocessing
 (montage, band-pass, notch, resample, re-reference, interpolate, ICA); fNIRS
 preprocessing (optical density, SCI, TDDR, Beer–Lambert); fixed and event-based
-epoching and averaging; and the full set of views above — spectra, band-power head
+epoching and averaging; and the full set of views above - spectra, band-power head
 maps, time-frequency, connectivity + connectogram, decoding (with classifier and
 mode choices), cluster statistics, condition comparison, and template source
 localization. Plus a guided workflow panel, an in-app report preview, and export.
