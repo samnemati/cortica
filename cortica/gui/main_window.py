@@ -173,9 +173,6 @@ class MainWindow(QMainWindow):
         export_action = QAction("Export report…", self)
         export_action.triggered.connect(self._export_report)
         toolbar.addAction(export_action)
-        save_fig_action = QAction("Save figure…", self)
-        save_fig_action.triggered.connect(self._save_figure)
-        toolbar.addAction(save_fig_action)
         ica_action = QAction("Fit ICA…", self)
         ica_action.triggered.connect(self._fit_ica)
         toolbar.addAction(ica_action)
@@ -285,6 +282,12 @@ class MainWindow(QMainWindow):
         self.classifier_selector.currentTextChanged.connect(self._on_classifier_changed)
         view_row.addWidget(self.classifier_selector)
         view_row.addStretch(1)
+        # A Save-figure button lives right above the plot it saves, so it is always
+        # visible regardless of how wide the toolbar is.
+        self.save_fig_button = QPushButton("Save figure…")
+        self.save_fig_button.setToolTip("Save the current view as SVG (vector) or PNG (raster)")
+        self.save_fig_button.clicked.connect(self._save_figure)
+        view_row.addWidget(self.save_fig_button)
         center_layout.addLayout(view_row)
 
         self.plot = pg.PlotWidget()

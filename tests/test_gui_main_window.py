@@ -437,6 +437,12 @@ def test_export_report_writes_html(qtbot, tmp_path):
     assert "Band-pass filter" in out.read_text()
 
 
+def test_save_figure_button_is_present_in_the_view_row(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    assert w.save_fig_button.text().startswith("Save figure")  # always-visible, not toolbar-only
+
+
 def test_save_figure_writes_svg_for_a_matplotlib_view(qtbot, tmp_path):
     w = MainWindow()
     qtbot.addWidget(w)
