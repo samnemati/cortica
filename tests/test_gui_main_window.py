@@ -255,6 +255,39 @@ def test_connectivity_edge_threshold_updates_state(qtbot):
     assert w._conn_threshold == 0.5
 
 
+def test_changing_band_recomputes_connectivity(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_fixed", {"duration": 1.0})
+    w.state.run_sync()
+    w._set_view("conn")  # computes for the default band (Alpha)
+    w.band_selector.setCurrentText("Beta")  # must recompute for the new band
+    assert w._conn_cache[1] == ("plv", "Beta")
+
+
+def test_connectivity_matrix_is_cached_across_style_switch(qtbot, monkeypatch):
+    from cortica.gui import main_window
+
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_fixed", {"duration": 1.0})
+    w.state.run_sync()
+    calls = {"n": 0}
+    real = main_window.viz.connectivity
+
+    def counting(*a, **k):
+        calls["n"] += 1
+        return real(*a, **k)
+
+    monkeypatch.setattr(main_window.viz, "connectivity", counting)
+    w._set_view("conn")  # computes once
+    assert calls["n"] == 1
+    w.conn_style_selector.setCurrentText("Connectogram")  # reuse cache — no recompute
+    assert calls["n"] == 1
+
+
 def test_decoding_view_renders_with_multi_condition_epochs(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)

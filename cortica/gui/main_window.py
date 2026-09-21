@@ -61,6 +61,7 @@ class MainWindow(QMainWindow):
         self._conn_method = "plv"
         self._conn_style = "matrix"
         self._conn_threshold = 0.0
+        self._conn_cache = None  # (payload, (method, band), matrix, names)
         self._decode_mode = "time"
         self._decode_classifier = "logreg"
         self._source_result = None
@@ -573,7 +574,7 @@ class MainWindow(QMainWindow):
 
     def _on_band_changed(self, band: str) -> None:
         self._band = band
-        if self._view_mode == "topo":
+        if self._view_mode in ("topo", "conn"):
             self._replot()
 
     def _on_threshold_changed(self, value: int) -> None:
@@ -753,7 +754,7 @@ class MainWindow(QMainWindow):
             self._mpl_canvas.draw_idle()
             return
         try:
-            matrix, names = viz.connectivity(payload, method=self._conn_method, band=self._band)
+            matrix, names = self._connectivity_data(payload)
             matrix = viz.threshold_matrix(matrix, self._conn_threshold)
             signed = float(np.nanmin(matrix)) < 0.0  # imcoh spans negative values
             if self._conn_style == "connectogram":
@@ -767,6 +768,18 @@ class MainWindow(QMainWindow):
             ax.text(0.5, 0.5, "Connectivity unavailable.", ha="center", va="center")
             self.statusBar().showMessage(f"Connectivity: {exc}")
         self._mpl_canvas.draw_idle()
+
+    def _connectivity_data(self, payload):
+        # Cache the (expensive) spectral-connectivity computation so switching style
+        # (matrix <-> connectogram) or the edge threshold reuses it instantly; only a
+        # new measure, band, or dataset triggers a recompute.
+        params = (self._conn_method, self._band)
+        cache = self._conn_cache
+        if cache is not None and cache[0] is payload and cache[1] == params:
+            return cache[2], cache[3]
+        matrix, names = viz.connectivity(payload, method=self._conn_method, band=self._band)
+        self._conn_cache = (payload, params, matrix, names)
+        return matrix, names
 
     def _plot_conn_matrix(self, matrix, names, signed) -> None:
         ax = self._mpl_fig.add_subplot(111)
