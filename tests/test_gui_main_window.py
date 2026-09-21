@@ -353,6 +353,31 @@ def test_comparison_view_renders_with_multi_condition_epochs(qtbot):
     assert w._view_mode == "compare"
 
 
+def test_brain_behavior_view_shows_guidance_without_a_file(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_events", {"tmin": -0.1, "tmax": 0.4})
+    w.state.run_sync()
+    w._set_view("behavior")  # no behavior imported -> guidance, must not raise
+    assert w._view_mode == "behavior"
+
+
+def test_brain_behavior_view_renders_a_correlation_map(qtbot):
+    import pandas as pd
+
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_events", {"tmin": -0.1, "tmax": 0.4})
+    w.state.run_sync()
+    n_trials = len(w.state.result.payload)
+    w._behavior_table = pd.DataFrame({"rt": list(range(n_trials))})
+    w._behavior_column = "rt"
+    w._set_view("behavior")  # correlates single-trial power with behavior, must render
+    assert w._view_mode == "behavior"
+
+
 def test_source_view_renders_a_result(qtbot):
     # exercise the view + rendering without the heavy fsaverage computation
     w = MainWindow()

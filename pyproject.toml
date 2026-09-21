@@ -37,6 +37,8 @@ dependencies = [
   "mne-connectivity",
   "scikit-learn",  # decoding, CSP, and cluster statistics
   "matplotlib",
+  "pandas",        # behavioral-table import and brain-behavior stats
+  "openpyxl",      # read behavioral data from Excel (.xlsx) files
 ]
 
 [project.optional-dependencies]

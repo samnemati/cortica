@@ -94,10 +94,11 @@ _VIEWS = [
     ("Statistics", "stats"),
     ("Comparison", "compare"),
     ("Source", "source"),
+    ("Brain-behavior", "behavior"),
 ]
 
 #: View modes rendered on the matplotlib canvas (the rest use pyqtgraph).
-_MPL_VIEWS = ("topo", "tfr", "conn", "decoding", "stats", "source", "compare")
+_MPL_VIEWS = ("topo", "tfr", "conn", "decoding", "stats", "source", "compare", "behavior")
 
 
 class MainWindow(QMainWindow):
@@ -117,6 +118,9 @@ class MainWindow(QMainWindow):
         self._decode_mode = "time"
         self._decode_classifier = "logreg"
         self._stats_mode = "averaged"
+        self._behavior_table = None
+        self._behavior_column = None
+        self._behavior_method = "pearson"
         self._source_result = None
         self._source_busy = False
         self._src_signals = None
@@ -291,6 +295,21 @@ class MainWindow(QMainWindow):
         self.stats_mode_selector.addItems(["Channel-averaged", "Spatiotemporal"])
         self.stats_mode_selector.currentTextChanged.connect(self._on_stats_mode_changed)
         view_row.addWidget(self.stats_mode_selector)
+        # Brain-behavior controls (hidden unless the brain-behavior view is active).
+        self.behavior_import_button = QPushButton("Import behavior…")
+        self.behavior_import_button.setToolTip("Load a per-trial CSV/Excel of behavioral scores")
+        self.behavior_import_button.clicked.connect(self._import_behavior)
+        view_row.addWidget(self.behavior_import_button)
+        self.behavior_column_label = QLabel("Score:")
+        view_row.addWidget(self.behavior_column_label)
+        self.behavior_column_selector = QComboBox()
+        self.behavior_column_selector.setMinimumWidth(110)
+        self.behavior_column_selector.currentTextChanged.connect(self._on_behavior_column_changed)
+        view_row.addWidget(self.behavior_column_selector)
+        self.behavior_method_selector = QComboBox()
+        self.behavior_method_selector.addItems(["Pearson", "Spearman"])
+        self.behavior_method_selector.currentTextChanged.connect(self._on_behavior_method_changed)
+        view_row.addWidget(self.behavior_method_selector)
         view_row.addStretch(1)
         # A Save-figure button lives right above the plot it saves, so it is always
         # visible regardless of how wide the toolbar is.
@@ -708,6 +727,34 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self.statusBar().showMessage(f"Could not export values: {exc}")
 
+    # ---- brain-behavior -----------------------------------------------------
+    def _import_behavior(self) -> None:
+        from .. import behavior as beh
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import behavioral data", "",
+            "Tables (*.csv *.tsv *.txt *.xlsx *.xls);;All files (*)",
+        )
+        if not path:
+            return
+        try:
+            table = beh.read_table(path)
+        except Exception as exc:
+            self.statusBar().showMessage(f"Could not read behavior file: {exc}")
+            return
+        self._behavior_table = table
+        columns = beh.numeric_columns(table)
+        self.behavior_column_selector.blockSignals(True)
+        self.behavior_column_selector.clear()
+        self.behavior_column_selector.addItems(columns)
+        self.behavior_column_selector.blockSignals(False)
+        self._behavior_column = columns[0] if columns else None
+        self.statusBar().showMessage(
+            f"Loaded {len(table)} rows, {len(columns)} numeric column(s)."
+        )
+        if self._view_mode == "behavior":
+            self._replot()
+
     # ---- ICA ----------------------------------------------------------------
     def _fit_ica(self) -> None:
         ds = self.state.current()
@@ -828,10 +875,20 @@ class MainWindow(QMainWindow):
         if self._view_mode == "stats":
             self._replot()
 
+    def _on_behavior_column_changed(self, text: str) -> None:
+        self._behavior_column = text or None
+        if self._view_mode == "behavior":
+            self._replot()
+
+    def _on_behavior_method_changed(self, text: str) -> None:
+        self._behavior_method = "spearman" if text == "Spearman" else "pearson"
+        if self._view_mode == "behavior":
+            self._replot()
+
     def _update_view_controls(self) -> None:
         view = self._view_mode
         for widget in (self.band_label, self.band_selector):
-            widget.setVisible(view in ("topo", "conn"))
+            widget.setVisible(view in ("topo", "conn", "behavior"))
         for widget in (self.threshold_label, self.threshold_slider):
             widget.setVisible(view == "topo")
         for widget in (self.tfr_method_label, self.tfr_method_selector):
@@ -845,6 +902,9 @@ class MainWindow(QMainWindow):
             widget.setVisible(view == "decoding")
         for widget in (self.stats_mode_label, self.stats_mode_selector):
             widget.setVisible(view == "stats")
+        for widget in (self.behavior_import_button, self.behavior_column_label,
+                       self.behavior_column_selector, self.behavior_method_selector):
+            widget.setVisible(view == "behavior")
 
     def _show_computing(self, message: str) -> None:
         """Paint a 'Computing…' notice on the plot and show a wait cursor before a
@@ -898,6 +958,9 @@ class MainWindow(QMainWindow):
             return
         if self._view_mode == "compare":
             self._plot_compare(payload)
+            return
+        if self._view_mode == "behavior":
+            self._plot_behavior(payload)
             return
         self.plot.clear()
         if payload is None or not hasattr(payload, "get_data"):
@@ -1258,6 +1321,79 @@ class MainWindow(QMainWindow):
             ax.set_axis_off()
             ax.text(0.5, 0.5, "Comparison unavailable.", ha="center", va="center")
             self.statusBar().showMessage(f"Comparison: {exc}")
+        self._mpl_canvas.draw_idle()
+
+    def _plot_behavior(self, payload) -> None:
+        import mne
+
+        self._mpl_fig.clear()
+        ax = self._mpl_fig.add_subplot(111)
+        ax.set_axis_off()
+        if not isinstance(payload, mne.BaseEpochs):
+            ax.text(
+                0.5, 0.5,
+                "Brain-behavior needs epochs (one per trial).\n"
+                "Add 'Epochs (by events)', click Run, then import behavior.",
+                ha="center", va="center",
+            )
+            self._mpl_canvas.draw_idle()
+            return
+        if self._behavior_table is None or not self._behavior_column:
+            ax.text(
+                0.5, 0.5,
+                "Import a per-trial behavioral file (CSV or Excel)\n"
+                "with 'Import behavior…', then pick a score column.",
+                ha="center", va="center",
+            )
+            self._mpl_canvas.draw_idle()
+            return
+        from .. import behavior as beh
+
+        column = self._behavior_column
+        values = np.asarray(self._behavior_table[column].to_numpy(), dtype=float)
+        if len(values) != len(payload):
+            ax.text(
+                0.5, 0.5,
+                f"Behavior rows ({len(values)}) must match epochs ({len(payload)}).\n"
+                "Use one row per trial, in the same order.",
+                ha="center", va="center",
+            )
+            self._mpl_canvas.draw_idle()
+            return
+        self._show_computing(f"Correlating {self._band} power with {column}...")
+        try:
+            power = beh.single_trial_band_power(payload, self._band)
+            r, p = beh.correlate_with_behavior(power, values, method=self._behavior_method)
+            r2 = beh.multiple_regression_r2(power, values)
+            self._mpl_fig.clear()
+            ax = self._mpl_fig.add_subplot(111)
+            lim = max(float(np.nanmax(np.abs(r))), 1e-6)
+            image, _ = mne.viz.plot_topomap(
+                r, payload.info, axes=ax, show=False, cmap="RdBu_r", vlim=(-lim, lim)
+            )
+            best = int(np.argmax(np.abs(r)))
+            ax.set_title(
+                f"{self._behavior_method.title()}: {self._band} power vs {column}\n"
+                f"peak {payload.ch_names[best]} r={r[best]:.2f}, p={p[best]:.3f}   "
+                f"(all-channel R2={r2:.2f})",
+                fontsize=9,
+            )
+            self._mpl_fig.colorbar(image, ax=ax, label="r")
+            self.statusBar().showMessage(
+                f"Brain-behavior: {self._band} power vs {column} ({self._behavior_method})"
+            )
+        except Exception as exc:
+            self._mpl_fig.clear()
+            ax = self._mpl_fig.add_subplot(111)
+            ax.set_axis_off()
+            ax.text(
+                0.5, 0.5,
+                "Brain-behavior map needs electrode positions.\nAdd a 'Set montage' step.",
+                ha="center", va="center",
+            )
+            self.statusBar().showMessage(f"Brain-behavior: {exc}")
+        finally:
+            self._done_computing()
         self._mpl_canvas.draw_idle()
 
     def _plot_traces(self, payload) -> None:
