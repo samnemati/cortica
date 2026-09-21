@@ -31,7 +31,54 @@ from .param_form import ParamForm
 from .runner import run_in_background
 from .state import AppState
 
-_TRACE_COLORS = ["#5ac8fa", "#f5a623", "#5fd3a6", "#f76d8e", "#9b8cff", "#3fc1c9"]
+_TRACE_COLORS = ["#2b6cb0", "#dd6b20", "#2f855a", "#c53030", "#6b46c1", "#2c7a7b"]
+
+#: A clean light theme for the Qt chrome (plots are styled separately to match).
+_STYLESHEET = """
+QMainWindow { background: #eef2f7; }
+QWidget { color: #1f2933; font-size: 13px; }
+QToolBar { background: #ffffff; border: none; border-bottom: 1px solid #d0d9e3;
+           spacing: 4px; padding: 5px 8px; }
+QToolButton { color: #1f2933; padding: 6px 10px; border-radius: 6px; }
+QToolButton:hover { background: #e6f0fa; }
+QToolButton:pressed { background: #d5e6f7; }
+QStatusBar { background: #ffffff; border-top: 1px solid #d0d9e3; color: #64748b; }
+QStatusBar QLabel { color: #64748b; }
+QLabel { color: #1f2933; }
+QLabel[heading="true"] { font-weight: 600; color: #33465c; padding: 6px 0 2px 2px; }
+QListWidget { background: #ffffff; border: 1px solid #d5dde5; border-radius: 8px;
+              padding: 4px; outline: none; }
+QListWidget::item { padding: 5px 6px; border-radius: 5px; color: #1f2933; }
+QListWidget::item:selected { background: #2b6cb0; color: #ffffff; }
+QListWidget::item:hover:!selected { background: #eaf2fb; }
+QListWidget::item:disabled { color: #a3adba; }
+QComboBox { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px;
+            padding: 4px 8px; min-height: 20px; }
+QComboBox:hover { border-color: #94a3b8; }
+QComboBox::drop-down { border: none; width: 18px; }
+QComboBox QAbstractItemView { background: #ffffff; border: 1px solid #cbd5e1;
+    selection-background-color: #2b6cb0; selection-color: #ffffff; outline: none; }
+QPushButton { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px;
+              padding: 6px 12px; color: #1f2933; }
+QPushButton:hover { background: #f1f5f9; border-color: #94a3b8; }
+QPushButton:pressed { background: #e2e8f0; }
+QPushButton:disabled { color: #a3adba; background: #f8fafc; }
+QPushButton#runButton { background: #2b6cb0; color: #ffffff; border: none;
+                        font-weight: 600; padding: 9px; }
+QPushButton#runButton:hover { background: #2c5282; }
+QPushButton#runButton:disabled { background: #9fbcdc; color: #eef2f7; }
+QSlider::groove:horizontal { height: 4px; background: #cbd5e1; border-radius: 2px; }
+QSlider::handle:horizontal { background: #2b6cb0; width: 14px; height: 14px;
+                             margin: -6px 0; border-radius: 7px; }
+QSlider::handle:horizontal:hover { background: #2c5282; }
+QSplitter::handle { background: #d0d9e3; }
+QScrollBar:vertical { background: transparent; width: 10px; margin: 2px; }
+QScrollBar::handle:vertical { background: #cbd5e1; border-radius: 5px; min-height: 24px; }
+QScrollBar::handle:vertical:hover { background: #94a3b8; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+QToolTip { background: #1f2933; color: #ffffff; border: none; padding: 4px 6px; }
+"""
 
 #: View dropdown labels paired with their internal mode keys (one source of truth
 #: for both directions, so the dropdown always reflects the active view).
@@ -76,7 +123,33 @@ class MainWindow(QMainWindow):
         self._replot()
 
     # ---- construction -------------------------------------------------------
+    def _section_label(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setProperty("heading", True)
+        return label
+
+    def _apply_theme(self) -> None:
+        self.setStyleSheet(_STYLESHEET)
+        import matplotlib as mpl
+
+        mpl.rcParams.update({
+            "figure.facecolor": "#ffffff",
+            "axes.facecolor": "#ffffff",
+            # medium grey so plot spines stay subtle but MNE's topomap head outline
+            # (which uses this rcParam) is clearly visible on the white background
+            "axes.edgecolor": "#7b8794",
+            "axes.linewidth": 0.8,
+            "axes.labelcolor": "#334155",
+            "axes.titlecolor": "#1f2933",
+            "axes.titlesize": 11,
+            "text.color": "#1f2933",
+            "xtick.color": "#64748b",
+            "ytick.color": "#64748b",
+            "font.size": 10,
+        })
+
     def _build_ui(self) -> None:
+        self._apply_theme()
         toolbar = self.addToolBar("Main")
         toolbar.setMovable(False)
         # Sample loaders first, right in the window toolbar, so they're easy to find.
@@ -111,22 +184,22 @@ class MainWindow(QMainWindow):
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(8, 8, 8, 8)
-        left_layout.addWidget(QLabel("Workflow"))
+        left_layout.addWidget(self._section_label("Workflow"))
         self.stage_label = QLabel()
         self.stage_label.setTextFormat(Qt.TextFormat.RichText)
         left_layout.addWidget(self.stage_label)
-        self.next_steps_label = QLabel("Next steps")
+        self.next_steps_label = self._section_label("Next steps")
         left_layout.addWidget(self.next_steps_label)
         self._next_container = QWidget()
         self._next_layout = QVBoxLayout(self._next_container)
         self._next_layout.setContentsMargins(0, 0, 0, 0)
         self._next_layout.setSpacing(4)
         left_layout.addWidget(self._next_container)
-        left_layout.addWidget(QLabel("Step library"))
+        left_layout.addWidget(self._section_label("Step library"))
         self.library = QListWidget()
         self.library.itemDoubleClicked.connect(self._on_library_double_clicked)
         left_layout.addWidget(self.library)
-        left_layout.addWidget(QLabel("Channels"))
+        left_layout.addWidget(self._section_label("Channels"))
         self.channel_list = QListWidget()
         self.channel_list.itemChanged.connect(self._on_channels_changed)
         left_layout.addWidget(self.channel_list)
@@ -208,8 +281,13 @@ class MainWindow(QMainWindow):
         center_layout.addLayout(view_row)
 
         self.plot = pg.PlotWidget()
-        self.plot.setBackground("#0c141e")
-        self.plot.showGrid(x=True, y=True, alpha=0.15)
+        self.plot.setBackground("#ffffff")
+        axis_pen = pg.mkPen("#94a3b8")
+        text_pen = pg.mkPen("#475569")
+        for axis_name in ("left", "bottom"):
+            self.plot.getAxis(axis_name).setPen(axis_pen)
+            self.plot.getAxis(axis_name).setTextPen(text_pen)
+        self.plot.showGrid(x=True, y=True, alpha=0.12)
         center_layout.addWidget(self.plot)
         self._mpl_fig = Figure(figsize=(4, 4))
         self._mpl_canvas = FigureCanvasQTAgg(self._mpl_fig)
@@ -220,7 +298,7 @@ class MainWindow(QMainWindow):
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(8, 8, 8, 8)
-        right_layout.addWidget(QLabel("Pipeline"))
+        right_layout.addWidget(self._section_label("Pipeline"))
         self.pipeline_list = QListWidget()
         self.pipeline_list.currentRowChanged.connect(self._show_params_for)
         right_layout.addWidget(self.pipeline_list)
@@ -250,6 +328,7 @@ class MainWindow(QMainWindow):
 
         right_layout.addStretch(1)
         self.run_button = QPushButton("Run pipeline")
+        self.run_button.setObjectName("runButton")
         self.run_button.clicked.connect(self._run)
         right_layout.addWidget(self.run_button)
 
@@ -768,6 +847,7 @@ class MainWindow(QMainWindow):
             ax.set_ylabel("Frequency (Hz)")
             ax.set_title("Time-frequency power (mean of selected channels)")
             self._mpl_fig.colorbar(image, ax=ax)
+            self.statusBar().showMessage("Time-frequency ready")
         except Exception as exc:
             self._mpl_fig.clear()
             ax = self._mpl_fig.add_subplot(111)
@@ -801,6 +881,9 @@ class MainWindow(QMainWindow):
                 self._plot_connectogram(matrix, names, signed)
             else:
                 self._plot_conn_matrix(matrix, names, signed)
+            self.statusBar().showMessage(
+                f"{self._conn_method.upper()} connectivity ready — {self._band} band"
+            )
         except Exception as exc:
             self._mpl_fig.clear()
             ax = self._mpl_fig.add_subplot(111)
@@ -914,6 +997,7 @@ class MainWindow(QMainWindow):
                 ax.set_ylabel("Accuracy")
                 ax.set_title(f"Decoding over time — {clf}")
                 ax.legend(loc="upper right", fontsize=8)
+            self.statusBar().showMessage(f"Decoding complete — {mode_label} ({clf})")
         except Exception as exc:
             self._mpl_fig.clear()
             ax = self._mpl_fig.add_subplot(111)
@@ -952,6 +1036,7 @@ class MainWindow(QMainWindow):
             ax.set_ylabel("Amplitude (µV)")
             ax.set_title("Condition comparison (cluster permutation)")
             ax.legend(loc="upper right", fontsize=8)
+            self.statusBar().showMessage("Cluster permutation test complete")
         except Exception as exc:
             self._mpl_fig.clear()
             ax = self._mpl_fig.add_subplot(111)
