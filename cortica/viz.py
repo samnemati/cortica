@@ -245,6 +245,30 @@ def spatiotemporal_cluster_test(epochs, n_permutations=200):
     return np.asarray(epochs.times), list(epochs.ch_names), stat.T, significant.T
 
 
+def glm_analysis(payload, stim_dur=5.0, drift_order=1):
+    """Fit a first-level GLM to fNIRS haemoglobin data and return the per-channel,
+    per-condition results as a DataFrame (theta/beta, t, p_value, Chroma, ...).
+
+    Builds an HRF-convolved design matrix from the recording's annotations plus drift
+    regressors, then runs the GLM. ``payload`` must be HbO/HbR (post Beer-Lambert) and
+    carry task annotations.
+    """
+    from mne_nirs.experimental_design import make_first_level_design_matrix
+    from mne_nirs.statistics import run_glm
+
+    design = make_first_level_design_matrix(payload, stim_dur=stim_dur, drift_order=drift_order)
+    return run_glm(payload, design).to_dataframe()
+
+
+def glm_conditions(table):
+    """Real experimental conditions in a GLM table (drops drift/constant regressors)."""
+    conditions = [
+        c for c in table["Condition"].unique()
+        if c != "constant" and not str(c).startswith("drift")
+    ]
+    return sorted(conditions)
+
+
 def condition_comparison(epochs):
     """Per-condition average time course (channels averaged) for every condition in
     ``epochs``, plus the difference wave when there are exactly two. Returns

@@ -105,10 +105,13 @@ _VIEWS = [
     ("Comparison", "compare"),
     ("Source", "source"),
     ("Brain-behavior", "behavior"),
+    ("GLM (fNIRS)", "glm"),
 ]
 
 #: View modes rendered on the matplotlib canvas (the rest use pyqtgraph).
-_MPL_VIEWS = ("topo", "tfr", "conn", "decoding", "stats", "source", "compare", "behavior")
+_MPL_VIEWS = (
+    "topo", "tfr", "conn", "decoding", "stats", "source", "compare", "behavior", "glm"
+)
 
 
 class MainWindow(QMainWindow):
@@ -131,6 +134,9 @@ class MainWindow(QMainWindow):
         self._behavior_table = None
         self._behavior_column = None
         self._behavior_method = "pearson"
+        self._glm_condition = None
+        self._glm_chroma = "hbo"
+        self._glm_cache = None  # (payload, dataframe)
         self._source_result = None
         self._source_busy = False
         self._src_signals = None
@@ -323,6 +329,17 @@ class MainWindow(QMainWindow):
         self.behavior_method_selector.addItems(["Pearson", "Spearman"])
         self.behavior_method_selector.currentTextChanged.connect(self._on_behavior_method_changed)
         view_row.addWidget(self.behavior_method_selector)
+        # GLM-only controls (hidden unless the GLM view is active).
+        self.glm_condition_label = QLabel("Condition:")
+        view_row.addWidget(self.glm_condition_label)
+        self.glm_condition_selector = QComboBox()
+        self.glm_condition_selector.setMinimumWidth(100)
+        self.glm_condition_selector.currentTextChanged.connect(self._on_glm_condition_changed)
+        view_row.addWidget(self.glm_condition_selector)
+        self.glm_chroma_selector = QComboBox()
+        self.glm_chroma_selector.addItems(["HbO", "HbR"])
+        self.glm_chroma_selector.currentTextChanged.connect(self._on_glm_chroma_changed)
+        view_row.addWidget(self.glm_chroma_selector)
         view_row.addStretch(1)
         # A Save-figure button lives right above the plot it saves, so it is always
         # visible regardless of how wide the toolbar is.
@@ -409,6 +426,7 @@ class MainWindow(QMainWindow):
         self.state.sourceChanged.connect(self._refresh_workflow)
         self.state.pipelineChanged.connect(self._refresh_pipeline)
         self.state.pipelineChanged.connect(self._refresh_workflow)
+        self.state.resultChanged.connect(self._refresh_channels)  # channels may be renamed
         self.state.resultChanged.connect(self._replot)
         self.state.resultChanged.connect(self._refresh_workflow)
 
@@ -482,11 +500,15 @@ class MainWindow(QMainWindow):
 
     # ---- channel selection --------------------------------------------------
     def _refresh_channels(self) -> None:
-        self.channel_list.blockSignals(True)
-        self.channel_list.clear()
         ds = self.state.current()
         payload = getattr(ds, "payload", None) if ds else None
-        for name in getattr(payload, "ch_names", []):
+        names = list(getattr(payload, "ch_names", []))
+        current = [self.channel_list.item(i).text() for i in range(self.channel_list.count())]
+        if names == current:
+            return  # channels unchanged (e.g. filtering) — keep the user's selection
+        self.channel_list.blockSignals(True)
+        self.channel_list.clear()
+        for name in names:
             item = QListWidgetItem(name)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked)
@@ -908,6 +930,16 @@ class MainWindow(QMainWindow):
         if self._view_mode == "behavior":
             self._replot()
 
+    def _on_glm_condition_changed(self, text: str) -> None:
+        self._glm_condition = text or None
+        if self._view_mode == "glm":
+            self._replot()
+
+    def _on_glm_chroma_changed(self, text: str) -> None:
+        self._glm_chroma = "hbr" if text == "HbR" else "hbo"
+        if self._view_mode == "glm":
+            self._replot()
+
     def _update_view_controls(self) -> None:
         view = self._view_mode
         for widget in (self.band_label, self.band_selector):
@@ -928,6 +960,9 @@ class MainWindow(QMainWindow):
         for widget in (self.behavior_import_button, self.behavior_column_label,
                        self.behavior_column_selector, self.behavior_method_selector):
             widget.setVisible(view == "behavior")
+        for widget in (self.glm_condition_label, self.glm_condition_selector,
+                       self.glm_chroma_selector):
+            widget.setVisible(view == "glm")
 
     def _show_computing(self, message: str) -> None:
         """Paint a 'Computing…' notice on the plot and show a wait cursor before a
@@ -984,6 +1019,9 @@ class MainWindow(QMainWindow):
             return
         if self._view_mode == "behavior":
             self._plot_behavior(payload)
+            return
+        if self._view_mode == "glm":
+            self._plot_glm(payload)
             return
         self.plot.clear()
         if payload is None or not hasattr(payload, "get_data"):
@@ -1417,6 +1455,88 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Brain-behavior: {exc}")
         finally:
             self._done_computing()
+        self._mpl_canvas.draw_idle()
+
+    def _glm_data(self, payload):
+        cache = self._glm_cache
+        if cache is not None and cache[0] is payload:
+            return cache[1]
+        self._show_computing("Fitting the GLM (design matrix + regression)...")
+        try:
+            table = viz.glm_analysis(payload)
+        finally:
+            self._done_computing()
+        self._glm_cache = (payload, table)
+        return table
+
+    def _plot_glm(self, payload) -> None:
+        self._mpl_fig.clear()
+        ax = self._mpl_fig.add_subplot(111)
+        ax.set_axis_off()
+        types = set(payload.get_channel_types()) if hasattr(payload, "get_channel_types") else set()
+        if not ({"hbo", "hbr"} & types):
+            ax.text(
+                0.5, 0.5,
+                "GLM needs HbO/HbR data.\n"
+                "On fNIRS, run Optical density then Beer-Lambert, and Run.",
+                ha="center", va="center",
+            )
+            self._mpl_canvas.draw_idle()
+            return
+        if payload.annotations is None or len(payload.annotations) == 0:
+            ax.text(
+                0.5, 0.5,
+                "GLM needs task events.\nThe recording must carry annotations (conditions).",
+                ha="center", va="center",
+            )
+            self._mpl_canvas.draw_idle()
+            return
+        conditions = sorted(set(payload.annotations.description))
+        shown = [self.glm_condition_selector.itemText(i)
+                 for i in range(self.glm_condition_selector.count())]
+        if shown != conditions:
+            self.glm_condition_selector.blockSignals(True)
+            self.glm_condition_selector.clear()
+            self.glm_condition_selector.addItems(conditions)
+            self.glm_condition_selector.blockSignals(False)
+            self._glm_condition = conditions[0] if conditions else None
+        condition = self._glm_condition or (conditions[0] if conditions else None)
+        try:
+            table = self._glm_data(payload)
+            rows = table[(table["Condition"] == condition) & (table["Chroma"] == self._glm_chroma)]
+            rows = rows.sort_values("ch_name")
+            names = [str(n).split(" ")[0] for n in rows["ch_name"]]
+            betas = rows["theta"].to_numpy() * 1e6
+            significant = (
+                rows["Significant"].to_numpy()
+                if "Significant" in rows
+                else rows["p_value"].to_numpy() < 0.05
+            )
+            self._mpl_fig.clear()
+            ax = self._mpl_fig.add_subplot(111)
+            positions = list(range(len(names)))
+            colors = ["#2f855a" if s else "#94a3b8" for s in significant]
+            ax.barh(positions, list(betas), color=colors)
+            ax.set_yticks(positions)
+            ax.set_yticklabels(names, fontsize=7)
+            ax.invert_yaxis()
+            ax.axvline(0, color="0.7", linewidth=0.8)
+            ax.set_xlabel(f"{self._glm_chroma.upper()} GLM beta (x1e-6)")
+            n_sig = int(np.sum(significant))
+            ax.set_title(
+                f"GLM activation: {condition}, {self._glm_chroma.upper()} "
+                f"({n_sig} significant, shown green)"
+            )
+            self._mpl_fig.tight_layout()
+            self.statusBar().showMessage(
+                f"GLM: {condition} {self._glm_chroma.upper()} ({n_sig} significant channels)"
+            )
+        except Exception as exc:
+            self._mpl_fig.clear()
+            ax = self._mpl_fig.add_subplot(111)
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "GLM unavailable.", ha="center", va="center")
+            self.statusBar().showMessage(f"GLM: {exc}")
         self._mpl_canvas.draw_idle()
 
     def _plot_traces(self, payload) -> None:

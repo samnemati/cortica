@@ -378,6 +378,26 @@ def test_brain_behavior_view_renders_a_correlation_map(qtbot):
     assert w._view_mode == "behavior"
 
 
+def test_glm_view_guides_without_haemoglobin(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_fnirs_sample()  # raw CW amplitude, not HbO/HbR yet
+    w._set_view("glm")  # shows guidance, must not raise
+    assert w._view_mode == "glm"
+
+
+def test_glm_view_renders_for_fnirs_haemoglobin(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_fnirs_sample()
+    w.state.add_step("optical_density")
+    w.state.add_step("beer_lambert", {"ppf": 6.0})
+    w.state.run_sync()  # result is HbO/HbR with task annotations
+    w._set_view("glm")  # fits the GLM and renders the beta bars
+    assert w._view_mode == "glm"
+    assert w.glm_condition_selector.count() >= 2  # Task / Control populated
+
+
 def test_source_view_renders_a_result(qtbot):
     # exercise the view + rendering without the heavy fsaverage computation
     w = MainWindow()

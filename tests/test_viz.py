@@ -10,8 +10,9 @@ import pytest
 
 mne = pytest.importorskip("mne")
 
-from cortica.samples import eeg_sample  # noqa: E402
+from cortica.samples import eeg_sample, fnirs_sample  # noqa: E402
 from cortica.steps.epoch import Average, EventEpochs, FixedLengthEpochs  # noqa: E402
+from cortica.steps.fnirs import BeerLambert, OpticalDensity  # noqa: E402
 from cortica.viz import (  # noqa: E402
     BANDS,
     CONNECTIVITY_METHODS,
@@ -22,6 +23,8 @@ from cortica.viz import (  # noqa: E402
     connectivity,
     decoding,
     decoding_csp,
+    glm_analysis,
+    glm_conditions,
     source_localization,
     spatiotemporal_cluster_test,
     spectrum,
@@ -173,6 +176,17 @@ def test_cluster_test_returns_condition_means_and_mask():
     times, mean_a, mean_b, sig, labels = cluster_test(epochs, n_permutations=100)
     assert len(mean_a) == len(mean_b) == len(sig) == len(times)
     assert len(labels) == 2
+
+
+def test_glm_analysis_returns_per_channel_condition_betas():
+    haemo = BeerLambert().apply(
+        OpticalDensity().apply(fnirs_sample(), {}), {"ppf": 6.0}
+    ).payload
+    table = glm_analysis(haemo, stim_dur=4.0)
+    assert "theta" in table.columns and "Condition" in table.columns
+    conditions = glm_conditions(table)
+    assert "Task" in conditions and "Control" in conditions
+    assert "constant" not in conditions  # design regressors are excluded
 
 
 def test_spatiotemporal_cluster_returns_channel_by_time_maps():
