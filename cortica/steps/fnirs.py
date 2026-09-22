@@ -165,3 +165,51 @@ class KeepLongChannels(Step):
         from mne_nirs.channels import get_long_channels
 
         return ds.derive(get_long_channels(ds.payload.copy()))
+
+
+@register
+class WaveletMotionCorrection(Step):
+    id = "wavelet_motion"
+    name = "Motion correction (wavelet)"
+    category = "Artifacts & quality"
+    modalities = ["fnirs"]
+    params = []
+
+    def check(self, ds) -> None:
+        if "fnirs_od" not in _channel_types(ds.payload):
+            raise StepError(
+                "Wavelet motion correction needs optical-density data. Add Optical density first."
+            )
+
+    def run(self, ds, p):
+        from .._motion import wavelet_motion_correction
+
+        raw = ds.payload.copy()
+        raw.apply_function(wavelet_motion_correction, channel_wise=False, verbose=False)
+        return ds.derive(raw)
+
+
+@register
+class SplineMotionCorrection(Step):
+    id = "spline_motion"
+    name = "Motion correction (spline)"
+    category = "Artifacts & quality"
+    modalities = ["fnirs"]
+    params = [Float("threshold", 5.0, min=1.0, label="Artifact threshold (robust z-score)")]
+
+    def check(self, ds) -> None:
+        if "fnirs_od" not in _channel_types(ds.payload):
+            raise StepError(
+                "Spline motion correction needs optical-density data. Add Optical density first."
+            )
+
+    def run(self, ds, p):
+        from .._motion import spline_motion_correction
+
+        raw = ds.payload.copy()
+        threshold = p["threshold"]
+        raw.apply_function(
+            lambda data: spline_motion_correction(data, threshold=threshold),
+            channel_wise=False, verbose=False,
+        )
+        return ds.derive(raw)

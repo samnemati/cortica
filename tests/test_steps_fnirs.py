@@ -17,7 +17,9 @@ from cortica.steps.fnirs import (  # noqa: E402
     OpticalDensity,
     ScalpCouplingIndex,
     ShortChannelRegression,
+    SplineMotionCorrection,
     Tddr,
+    WaveletMotionCorrection,
 )
 
 
@@ -85,6 +87,23 @@ def test_keep_long_channels_drops_the_short_pair():
     assert len(out.payload.ch_names) == 8  # 10 channels minus the 2 short ones
 
 
+def test_wavelet_motion_correction_runs_on_optical_density():
+    od = OpticalDensity().apply(fnirs_sample(), {})
+    out = WaveletMotionCorrection().apply(od, {})
+    assert out.payload.get_data().shape == od.payload.get_data().shape
+
+
+def test_spline_motion_correction_runs_on_optical_density():
+    od = OpticalDensity().apply(fnirs_sample(), {})
+    out = SplineMotionCorrection().apply(od, {"threshold": 5.0})
+    assert out.payload.get_data().shape == od.payload.get_data().shape
+
+
+def test_motion_correction_steps_require_optical_density():
+    with pytest.raises(StepError):
+        WaveletMotionCorrection().apply(fnirs_sample(), {})  # raw CW, not OD
+
+
 def test_fnirs_steps_register_themselves():
     import cortica.steps  # noqa: F401
 
@@ -96,5 +115,7 @@ def test_fnirs_steps_register_themselves():
         ("short_channel_regression", ShortChannelRegression),
         ("enhance_negative_correlation", EnhanceNegativeCorrelation),
         ("keep_long_channels", KeepLongChannels),
+        ("wavelet_motion", WaveletMotionCorrection),
+        ("spline_motion", SplineMotionCorrection),
     ):
         assert default_registry.get(step_id) is cls

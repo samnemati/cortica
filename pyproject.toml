@@ -39,6 +39,7 @@ dependencies = [
   "matplotlib",
   "pandas",        # behavioral-table import and brain-behavior stats
   "openpyxl",      # read behavioral data from Excel (.xlsx) files
+  "PyWavelets",    # wavelet motion correction for fNIRS
 ]
 
 [project.optional-dependencies]
