@@ -8,6 +8,7 @@ from cortica.group import (  # noqa: E402
     group_correlation,
     linear_fit,
     subject_band_power,
+    subject_connectivity,
     subject_id_from_path,
 )
 from cortica.samples import eeg_sample  # noqa: E402
@@ -42,3 +43,10 @@ def test_subject_band_power_from_a_saved_recording(tmp_path):
     eeg_sample().payload.save(str(path), overwrite=True, verbose=False)
     value = subject_band_power(str(path), "Alpha", "O1")
     assert value > 0
+
+
+def test_subject_connectivity_from_a_saved_recording(tmp_path):
+    path = tmp_path / "S01_raw.fif"
+    eeg_sample().payload.save(str(path), overwrite=True, verbose=False)
+    value = subject_connectivity(str(path), "plv", "Alpha", "O1", "O2", duration=1.0)
+    assert 0.0 <= value <= 1.0  # PLV is bounded in [0, 1]

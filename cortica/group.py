@@ -32,6 +32,20 @@ def subject_band_power(path, band, channel, loader=None) -> float:
     return float(viz.band_power(dataset.payload, band, picks=[channel])[0])
 
 
+def subject_connectivity(path, method, band, ch_a, ch_b, duration=2.0, loader=None) -> float:
+    """Load a recording, epoch it into fixed-length windows, and return the ``method``
+    connectivity in ``band`` between ``ch_a`` and ``ch_b`` (a scalar).
+    """
+    from .io import load_raw
+    from .steps.epoch import FixedLengthEpochs
+
+    dataset = (loader or load_raw)(path)
+    epochs = FixedLengthEpochs().apply(dataset, {"duration": duration})
+    matrix, names = viz.connectivity(epochs.payload, method=method, band=band)
+    i, j = names.index(ch_a), names.index(ch_b)
+    return float(matrix[i, j])
+
+
 def align_behavior(subject_ids, table, id_column, value_column):
     """Match a behavioral column to ``subject_ids`` by id.
 

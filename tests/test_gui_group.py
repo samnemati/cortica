@@ -41,8 +41,28 @@ def test_group_dialog_draw_reports_a_correlation(qtbot):
     qtbot.addWidget(dialog)
     dialog.value_column.addItem("score")
     dialog.value_column.setCurrentText("score")
-    dialog._draw([1.0, 2.0, 3.0, 4.0], [2.0, 4.1, 5.9, 8.0], "Alpha", "O1", "pearson")
+    dialog._draw([1.0, 2.0, 3.0, 4.0], [2.0, 4.1, 5.9, 8.0], "pearson")
     assert "r=" in dialog.result_label.text()
+
+
+def test_group_dialog_connectivity_feature_computes(qtbot, tmp_path):
+    import pandas as pd
+
+    paths = _save_subjects(tmp_path, 4)
+    dialog = GroupDialog(channels=["O1", "O2"])
+    qtbot.addWidget(dialog)
+    dialog._add_paths(paths)
+    dialog._set_behavior_table(
+        pd.DataFrame({"subject": [f"S{i:02d}" for i in range(4)], "score": [1.0, 2.0, 3.0, 4.0]})
+    )
+    dialog.id_column.setCurrentText("subject")
+    dialog.value_column.setCurrentText("score")
+    dialog.feature_kind.setCurrentText("Connectivity")
+    dialog.channel.setCurrentText("O1")
+    dialog.channel_b.setCurrentText("O2")
+    dialog._compute()
+    assert len(dialog._result_rows) == 4  # PLV(O1,O2) per subject, matched to behavior
+    assert "-" in dialog._feature_label()  # e.g. "PLV Alpha O1-O2"
 
 
 def test_group_dialog_guides_when_empty(qtbot):

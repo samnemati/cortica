@@ -60,18 +60,35 @@ class GroupDialog(QDialog):
         layout.addWidget(self.table)
 
         feature_row = QHBoxLayout()
-        feature_row.addWidget(QLabel("Feature: mean"))
+        feature_row.addWidget(QLabel("Feature:"))
+        self.feature_kind = QComboBox()
+        self.feature_kind.addItems(["Band power", "Connectivity"])
+        self.feature_kind.currentTextChanged.connect(self._update_feature_controls)
+        feature_row.addWidget(self.feature_kind)
+        self.conn_method_label = QLabel("measure")
+        feature_row.addWidget(self.conn_method_label)
+        self.conn_method = QComboBox()
+        self.conn_method.addItems(list(viz.CONNECTIVITY_METHODS))
+        feature_row.addWidget(self.conn_method)
         self.band = QComboBox()
         self.band.addItems(list(viz.BANDS))
         self.band.setCurrentText("Alpha")
         feature_row.addWidget(self.band)
-        feature_row.addWidget(QLabel("power at"))
+        self.channel_label = QLabel("at")
+        feature_row.addWidget(self.channel_label)
         self.channel = QComboBox()
         self.channel.setMinimumWidth(90)
         if channels:
             self.channel.addItems(list(channels))
         feature_row.addWidget(self.channel)
-        feature_row.addWidget(QLabel("Method:"))
+        self.channel_b_label = QLabel("and")
+        feature_row.addWidget(self.channel_b_label)
+        self.channel_b = QComboBox()
+        self.channel_b.setMinimumWidth(90)
+        if channels:
+            self.channel_b.addItems(list(channels))
+        feature_row.addWidget(self.channel_b)
+        feature_row.addWidget(QLabel("Corr:"))
         self.method = QComboBox()
         self.method.addItems(["Pearson", "Spearman"])
         feature_row.addWidget(self.method)
@@ -81,6 +98,7 @@ class GroupDialog(QDialog):
         feature_row.addWidget(compute_button)
         feature_row.addStretch(1)
         layout.addLayout(feature_row)
+        self._update_feature_controls()
 
         self._fig = Figure(figsize=(5, 3))
         self._canvas = FigureCanvasQTAgg(self._fig)
@@ -143,21 +161,52 @@ class GroupDialog(QDialog):
         self.value_column.addItems(beh.numeric_columns(table))
         self.result_label.setText(f"Behavior loaded: {len(table)} rows.")
 
+    # ---- feature selection --------------------------------------------------
+    def _update_feature_controls(self) -> None:
+        is_conn = self.feature_kind.currentText() == "Connectivity"
+        self.conn_method_label.setVisible(is_conn)
+        self.conn_method.setVisible(is_conn)
+        self.channel_b_label.setVisible(is_conn)
+        self.channel_b.setVisible(is_conn)
+        self.channel_label.setText("between" if is_conn else "at")
+
+    def _feature_label(self) -> str:
+        band = self.band.currentText()
+        if self.feature_kind.currentText() == "Connectivity":
+            return (
+                f"{self.conn_method.currentText()} {band} "
+                f"{self.channel.currentText()}-{self.channel_b.currentText()}"
+            )
+        return f"{band} power at {self.channel.currentText()}"
+
+    def _subject_value(self, path) -> float:
+        band = self.band.currentText()
+        if self.feature_kind.currentText() == "Connectivity":
+            method = viz.CONNECTIVITY_METHODS.get(self.conn_method.currentText(), "plv")
+            return group.subject_connectivity(
+                path, method, band, self.channel.currentText(), self.channel_b.currentText()
+            )
+        return group.subject_band_power(path, band, self.channel.currentText())
+
     # ---- compute ------------------------------------------------------------
     def _compute(self) -> None:
         if not self._paths or self._behavior is None:
             self.result_label.setText("Add recordings and import a behavior file first.")
             return
-        channel = self.channel.currentText()
-        if not channel:
+        if not self.channel.currentText():
             self.result_label.setText("Pick a channel for the feature.")
             return
-        band = self.band.currentText()
+        if self.feature_kind.currentText() == "Connectivity" and (
+            not self.channel_b.currentText()
+            or self.channel_b.currentText() == self.channel.currentText()
+        ):
+            self.result_label.setText("Pick two different channels for connectivity.")
+            return
         method = "spearman" if self.method.currentText() == "Spearman" else "pearson"
         ids, feature_lookup = [], {}
         for path in self._paths:
             try:
-                value = group.subject_band_power(path, band, channel)
+                value = self._subject_value(path)
             except Exception:
                 continue
             sid = group.subject_id_from_path(path)
@@ -168,9 +217,9 @@ class GroupDialog(QDialog):
         )
         feature_values = [feature_lookup[sid] for sid in kept_ids]
         self._result_rows = list(zip(kept_ids, feature_values, list(behavior_values)))
-        self._draw(feature_values, list(behavior_values), band, channel, method)
+        self._draw(feature_values, list(behavior_values), method)
 
-    def _draw(self, features, behavior, band, channel, method) -> None:
+    def _draw(self, features, behavior, method) -> None:
         import numpy as np
 
         self._fig.clear()
@@ -191,7 +240,7 @@ class GroupDialog(QDialog):
         ax.scatter(features, behavior, color="#2b6cb0")
         xs = np.array([min(features), max(features)])
         ax.plot(xs, slope * xs + intercept, color="#c53030", linewidth=1.5)
-        ax.set_xlabel(f"{band} power at {channel}")
+        ax.set_xlabel(self._feature_label())
         ax.set_ylabel(self.value_column.currentText())
         ax.set_title(f"{method.title()}: r={r:.2f}, p={p:.3f}  (n={len(features)})")
         self._fig.tight_layout()
@@ -211,7 +260,7 @@ class GroupDialog(QDialog):
         )
         if not path:
             return
-        feature_name = f"{self.band.currentText()}_{self.channel.currentText()}"
+        feature_name = self._feature_label().replace(" ", "_")
         with open(path, "w", newline="") as handle:
             writer = csv.writer(handle)
             writer.writerow(["subject", feature_name, self.value_column.currentText()])
