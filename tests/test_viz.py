@@ -25,6 +25,7 @@ from cortica.viz import (  # noqa: E402
     decoding_csp,
     glm_analysis,
     glm_conditions,
+    glm_contrast,
     regression_erp,
     source_localization,
     spatiotemporal_cluster_test,
@@ -203,6 +204,15 @@ def test_glm_analysis_returns_per_channel_condition_betas():
     conditions = glm_conditions(table)
     assert "Task" in conditions and "Control" in conditions
     assert "constant" not in conditions  # design regressors are excluded
+
+
+def test_glm_contrast_returns_per_channel_effects():
+    haemo = BeerLambert().apply(
+        OpticalDensity().apply(fnirs_sample(), {}), {"ppf": 6.0}
+    ).payload
+    table = glm_contrast(haemo, "Task", "Control", stim_dur=4.0)
+    assert "effect" in table.columns
+    assert (table["Chroma"] == "hbo").any()
 
 
 def test_spatiotemporal_cluster_returns_channel_by_time_maps():

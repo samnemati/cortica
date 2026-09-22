@@ -1516,22 +1516,37 @@ class MainWindow(QMainWindow):
             )
             self._mpl_canvas.draw_idle()
             return
+        from itertools import combinations
+
         conditions = sorted(set(payload.annotations.description))
+        options = conditions + [f"{a} vs {b}" for a, b in combinations(conditions, 2)]
         shown = [self.glm_condition_selector.itemText(i)
                  for i in range(self.glm_condition_selector.count())]
-        if shown != conditions:
+        if shown != options:
             self.glm_condition_selector.blockSignals(True)
             self.glm_condition_selector.clear()
-            self.glm_condition_selector.addItems(conditions)
+            self.glm_condition_selector.addItems(options)
+            if self._glm_condition not in options:
+                self._glm_condition = options[0] if options else None
+            self.glm_condition_selector.setCurrentText(self._glm_condition or "")
             self.glm_condition_selector.blockSignals(False)
-            self._glm_condition = conditions[0] if conditions else None
-        condition = self._glm_condition or (conditions[0] if conditions else None)
+        selection = self._glm_condition or (options[0] if options else None)
         try:
-            table = self._glm_data(payload)
-            rows = table[(table["Condition"] == condition) & (table["Chroma"] == self._glm_chroma)]
-            rows = rows.sort_values("ch_name")
+            if selection and " vs " in selection:
+                cond_a, cond_b = selection.split(" vs ")
+                self._show_computing(f"GLM contrast: {selection}...")
+                try:
+                    table = viz.glm_contrast(payload, cond_a, cond_b)
+                finally:
+                    self._done_computing()
+                value_column, kind = "effect", f"contrast {selection}"
+            else:
+                table = self._glm_data(payload)
+                table = table[table["Condition"] == selection]
+                value_column, kind = "theta", f"activation: {selection}"
+            rows = table[table["Chroma"] == self._glm_chroma].sort_values("ch_name")
             names = [str(n).split(" ")[0] for n in rows["ch_name"]]
-            betas = rows["theta"].to_numpy() * 1e6
+            values = rows[value_column].to_numpy() * 1e6
             significant = (
                 rows["Significant"].to_numpy()
                 if "Significant" in rows
@@ -1541,20 +1556,19 @@ class MainWindow(QMainWindow):
             ax = self._mpl_fig.add_subplot(111)
             positions = list(range(len(names)))
             colors = ["#2f855a" if s else "#94a3b8" for s in significant]
-            ax.barh(positions, list(betas), color=colors)
+            ax.barh(positions, list(values), color=colors)
             ax.set_yticks(positions)
             ax.set_yticklabels(names, fontsize=7)
             ax.invert_yaxis()
             ax.axvline(0, color="0.7", linewidth=0.8)
-            ax.set_xlabel(f"{self._glm_chroma.upper()} GLM beta (x1e-6)")
+            ax.set_xlabel(f"{self._glm_chroma.upper()} {value_column} (x1e-6)")
             n_sig = int(np.sum(significant))
             ax.set_title(
-                f"GLM activation: {condition}, {self._glm_chroma.upper()} "
-                f"({n_sig} significant, shown green)"
+                f"GLM {kind}, {self._glm_chroma.upper()} ({n_sig} significant, shown green)"
             )
             self._mpl_fig.tight_layout()
             self.statusBar().showMessage(
-                f"GLM: {condition} {self._glm_chroma.upper()} ({n_sig} significant channels)"
+                f"GLM {kind} {self._glm_chroma.upper()} ({n_sig} significant channels)"
             )
         except Exception as exc:
             self._mpl_fig.clear()

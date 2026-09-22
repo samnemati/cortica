@@ -291,6 +291,23 @@ def regression_erp(epochs, predictor=None):
     )
 
 
+def glm_contrast(payload, condition_a, condition_b, stim_dur=5.0, drift_order=1):
+    """First-level GLM contrast ``condition_a - condition_b`` on fNIRS haemoglobin
+    data. Returns per-channel results (effect, stat, p_value, Chroma, ...) as a
+    DataFrame.
+    """
+    from mne_nirs.experimental_design import make_first_level_design_matrix
+    from mne_nirs.statistics import run_glm
+
+    design = make_first_level_design_matrix(payload, stim_dur=stim_dur, drift_order=drift_order)
+    glm = run_glm(payload, design)
+    vector = [
+        1.0 if c == condition_a else (-1.0 if c == condition_b else 0.0)
+        for c in design.columns
+    ]
+    return glm.compute_contrast(vector).to_dataframe()
+
+
 def glm_conditions(table):
     """Real experimental conditions in a GLM table (drops drift/constant regressors)."""
     conditions = [

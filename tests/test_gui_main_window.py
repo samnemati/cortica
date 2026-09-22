@@ -424,6 +424,23 @@ def test_glm_view_renders_for_fnirs_haemoglobin(qtbot):
     assert w.glm_condition_selector.count() >= 2  # Task / Control populated
 
 
+def test_glm_view_renders_a_contrast(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_fnirs_sample()
+    w.state.add_step("optical_density")
+    w.state.add_step("beer_lambert", {"ppf": 6.0})
+    w.state.run_sync()
+    w._set_view("glm")  # populates conditions + "A vs B" contrasts
+    contrast = next(
+        w.glm_condition_selector.itemText(i)
+        for i in range(w.glm_condition_selector.count())
+        if " vs " in w.glm_condition_selector.itemText(i)
+    )
+    w.glm_condition_selector.setCurrentText(contrast)  # computes the contrast, must render
+    assert " vs " in (w._glm_condition or "")
+
+
 def test_source_view_renders_a_result(qtbot):
     # exercise the view + rendering without the heavy fsaverage computation
     w = MainWindow()
