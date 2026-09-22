@@ -60,6 +60,16 @@ QComboBox:hover { border-color: #94a3b8; }
 QComboBox::drop-down { border: none; width: 18px; }
 QComboBox QAbstractItemView { background: #ffffff; border: 1px solid #cbd5e1;
     selection-background-color: #2b6cb0; selection-color: #ffffff; outline: none; }
+QLineEdit, QAbstractSpinBox { background: #ffffff; color: #1f2933;
+    border: 1px solid #cbd5e1; border-radius: 6px; padding: 3px 6px; }
+QLineEdit:focus, QAbstractSpinBox:focus { border-color: #2b6cb0; }
+QLineEdit:disabled, QAbstractSpinBox:disabled { color: #a3adba; background: #f8fafc; }
+QTableWidget, QTableView { background: #ffffff; color: #1f2933;
+    border: 1px solid #d5dde5; border-radius: 8px; gridline-color: #e2e8f0; outline: none; }
+QTableWidget::item:selected, QTableView::item:selected {
+    background: #2b6cb0; color: #ffffff; }
+QHeaderView::section { background: #eef2f7; color: #33465c; border: none;
+    border-bottom: 1px solid #d5dde5; padding: 4px 6px; }
 QPushButton { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px;
               padding: 6px 12px; color: #1f2933; }
 QPushButton:hover { background: #f1f5f9; border-color: #94a3b8; }
