@@ -62,7 +62,7 @@ class GroupDialog(QDialog):
         feature_row = QHBoxLayout()
         feature_row.addWidget(QLabel("Feature:"))
         self.feature_kind = QComboBox()
-        self.feature_kind.addItems(["Band power", "Connectivity"])
+        self.feature_kind.addItems(["Band power", "Connectivity", "fNIRS GLM"])
         self.feature_kind.currentTextChanged.connect(self._update_feature_controls)
         feature_row.addWidget(self.feature_kind)
         self.conn_method_label = QLabel("measure")
@@ -88,6 +88,14 @@ class GroupDialog(QDialog):
         if channels:
             self.channel_b.addItems(list(channels))
         feature_row.addWidget(self.channel_b)
+        self.glm_condition_label = QLabel("condition")
+        feature_row.addWidget(self.glm_condition_label)
+        self.glm_condition = QComboBox()
+        self.glm_condition.setMinimumWidth(90)
+        feature_row.addWidget(self.glm_condition)
+        self.glm_chroma = QComboBox()
+        self.glm_chroma.addItems(["HbO", "HbR"])
+        feature_row.addWidget(self.glm_chroma)
         feature_row.addWidget(QLabel("Corr:"))
         self.method = QComboBox()
         self.method.addItems(["Pearson", "Spearman"])
@@ -131,7 +139,10 @@ class GroupDialog(QDialog):
             try:
                 from ..io import load_raw
 
-                self.channel.addItems(list(load_raw(self._paths[0]).payload.ch_names))
+                raw = load_raw(self._paths[0]).payload
+                self.channel.addItems(list(raw.ch_names))
+                if self.glm_condition.count() == 0 and len(raw.annotations):
+                    self.glm_condition.addItems(sorted(set(raw.annotations.description)))
             except Exception:
                 pass
 
@@ -163,30 +174,44 @@ class GroupDialog(QDialog):
 
     # ---- feature selection --------------------------------------------------
     def _update_feature_controls(self) -> None:
-        is_conn = self.feature_kind.currentText() == "Connectivity"
+        kind = self.feature_kind.currentText()
+        is_conn = kind == "Connectivity"
+        is_glm = kind == "fNIRS GLM"
+        self.band.setVisible(not is_glm)
         self.conn_method_label.setVisible(is_conn)
         self.conn_method.setVisible(is_conn)
         self.channel_b_label.setVisible(is_conn)
         self.channel_b.setVisible(is_conn)
+        self.glm_condition_label.setVisible(is_glm)
+        self.glm_condition.setVisible(is_glm)
+        self.glm_chroma.setVisible(is_glm)
         self.channel_label.setText("between" if is_conn else "at")
 
     def _feature_label(self) -> str:
-        band = self.band.currentText()
-        if self.feature_kind.currentText() == "Connectivity":
+        kind = self.feature_kind.currentText()
+        if kind == "Connectivity":
             return (
-                f"{self.conn_method.currentText()} {band} "
+                f"{self.conn_method.currentText()} {self.band.currentText()} "
                 f"{self.channel.currentText()}-{self.channel_b.currentText()}"
             )
-        return f"{band} power at {self.channel.currentText()}"
+        if kind == "fNIRS GLM":
+            sd = self.channel.currentText().split(" ")[0]
+            return f"GLM {self.glm_condition.currentText()} {self.glm_chroma.currentText()} {sd}"
+        return f"{self.band.currentText()} power at {self.channel.currentText()}"
 
     def _subject_value(self, path) -> float:
-        band = self.band.currentText()
-        if self.feature_kind.currentText() == "Connectivity":
+        kind = self.feature_kind.currentText()
+        if kind == "Connectivity":
             method = viz.CONNECTIVITY_METHODS.get(self.conn_method.currentText(), "plv")
             return group.subject_connectivity(
-                path, method, band, self.channel.currentText(), self.channel_b.currentText()
+                path, method, self.band.currentText(),
+                self.channel.currentText(), self.channel_b.currentText(),
             )
-        return group.subject_band_power(path, band, self.channel.currentText())
+        if kind == "fNIRS GLM":
+            sd = self.channel.currentText().split(" ")[0]
+            chroma = "hbr" if self.glm_chroma.currentText() == "HbR" else "hbo"
+            return group.subject_glm_beta(path, self.glm_condition.currentText(), sd, chroma)
+        return group.subject_band_power(path, self.band.currentText(), self.channel.currentText())
 
     # ---- compute ------------------------------------------------------------
     def _compute(self) -> None:

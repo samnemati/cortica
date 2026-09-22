@@ -6,14 +6,14 @@ pytest.importorskip("pytestqt")
 mne = pytest.importorskip("mne")
 
 from cortica.gui.group_dialog import GroupDialog  # noqa: E402
-from cortica.samples import eeg_sample  # noqa: E402
+from cortica.samples import eeg_sample, fnirs_sample  # noqa: E402
 
 
-def _save_subjects(tmp_path, n):
+def _save_subjects(tmp_path, n, sample=eeg_sample):
     paths = []
     for i in range(n):
         path = tmp_path / f"S{i:02d}_raw.fif"
-        eeg_sample().payload.save(str(path), overwrite=True, verbose=False)
+        sample().payload.save(str(path), overwrite=True, verbose=False)
         paths.append(str(path))
     return paths
 
@@ -63,6 +63,26 @@ def test_group_dialog_connectivity_feature_computes(qtbot, tmp_path):
     dialog._compute()
     assert len(dialog._result_rows) == 4  # PLV(O1,O2) per subject, matched to behavior
     assert "-" in dialog._feature_label()  # e.g. "PLV Alpha O1-O2"
+
+
+def test_group_dialog_glm_feature_computes(qtbot, tmp_path):
+    import pandas as pd
+
+    paths = _save_subjects(tmp_path, 4, sample=fnirs_sample)
+    dialog = GroupDialog()
+    qtbot.addWidget(dialog)
+    dialog._add_paths(paths)  # channel + glm_condition populated from the first recording
+    dialog._set_behavior_table(
+        pd.DataFrame({"subject": [f"S{i:02d}" for i in range(4)], "score": [1.0, 2.0, 3.0, 4.0]})
+    )
+    dialog.id_column.setCurrentText("subject")
+    dialog.value_column.setCurrentText("score")
+    dialog.feature_kind.setCurrentText("fNIRS GLM")
+    dialog.channel.setCurrentText("S1_D1 760")  # S-D pair derived by stripping wavelength
+    dialog.glm_condition.setCurrentText("Task")
+    dialog._compute()
+    assert len(dialog._result_rows) == 4  # a per-subject GLM beta, matched to behavior
+    assert dialog._feature_label().startswith("GLM Task")
 
 
 def test_group_dialog_guides_when_empty(qtbot):

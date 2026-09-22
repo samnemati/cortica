@@ -46,6 +46,24 @@ def subject_connectivity(path, method, band, ch_a, ch_b, duration=2.0, loader=No
     return float(matrix[i, j])
 
 
+def subject_glm_beta(path, condition, channel, chroma="hbo", stim_dur=5.0, loader=None) -> float:
+    """Load an fNIRS recording, run the first-level GLM, and return the beta (theta)
+    for ``condition`` at ``channel`` (an S-D pair like ``S1_D1``) and ``chroma``.
+    """
+    from mne.preprocessing.nirs import beer_lambert_law, optical_density
+
+    from .io import load_raw
+
+    dataset = (loader or load_raw)(path)
+    haemo = beer_lambert_law(optical_density(dataset.payload), ppf=6.0)
+    table = viz.glm_analysis(haemo, stim_dur=stim_dur)
+    name = f"{channel} {chroma}"
+    match = table[(table["Condition"] == condition) & (table["ch_name"] == name)]
+    if match.empty:
+        raise ValueError(f"No GLM estimate for {name} in condition {condition}.")
+    return float(match["theta"].iloc[0])
+
+
 def align_behavior(subject_ids, table, id_column, value_column):
     """Match a behavioral column to ``subject_ids`` by id.
 
