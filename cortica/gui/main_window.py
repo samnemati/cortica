@@ -105,12 +105,14 @@ _VIEWS = [
     ("Comparison", "compare"),
     ("Source", "source"),
     ("Brain-behavior", "behavior"),
+    ("Regression (rERP)", "rerp"),
     ("GLM (fNIRS)", "glm"),
 ]
 
 #: View modes rendered on the matplotlib canvas (the rest use pyqtgraph).
 _MPL_VIEWS = (
-    "topo", "tfr", "conn", "decoding", "stats", "source", "compare", "behavior", "glm"
+    "topo", "tfr", "conn", "decoding", "stats", "source", "compare",
+    "behavior", "rerp", "glm",
 )
 
 
@@ -137,6 +139,7 @@ class MainWindow(QMainWindow):
         self._glm_condition = None
         self._glm_chroma = "hbo"
         self._glm_cache = None  # (payload, dataframe)
+        self._rerp_predictor = "Condition"
         self._source_result = None
         self._source_busy = False
         self._src_signals = None
@@ -340,6 +343,17 @@ class MainWindow(QMainWindow):
         self.glm_chroma_selector.addItems(["HbO", "HbR"])
         self.glm_chroma_selector.currentTextChanged.connect(self._on_glm_chroma_changed)
         view_row.addWidget(self.glm_chroma_selector)
+        # Regression-ERP controls (hidden unless the rERP view is active).
+        self.rerp_predictor_label = QLabel("Predictor:")
+        view_row.addWidget(self.rerp_predictor_label)
+        self.rerp_predictor_selector = QComboBox()
+        self.rerp_predictor_selector.setMinimumWidth(110)
+        self.rerp_predictor_selector.currentTextChanged.connect(self._on_rerp_predictor_changed)
+        view_row.addWidget(self.rerp_predictor_selector)
+        self.rerp_import_button = QPushButton("Import behavior…")
+        self.rerp_import_button.setToolTip("Load a per-trial CSV/Excel to use as a predictor")
+        self.rerp_import_button.clicked.connect(self._import_behavior)
+        view_row.addWidget(self.rerp_import_button)
         view_row.addStretch(1)
         # A Save-figure button lives right above the plot it saves, so it is always
         # visible regardless of how wide the toolbar is.
@@ -797,7 +811,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"Loaded {len(table)} rows, {len(columns)} numeric column(s)."
         )
-        if self._view_mode == "behavior":
+        if self._view_mode in ("behavior", "rerp"):
             self._replot()
 
     # ---- ICA ----------------------------------------------------------------
@@ -940,6 +954,11 @@ class MainWindow(QMainWindow):
         if self._view_mode == "glm":
             self._replot()
 
+    def _on_rerp_predictor_changed(self, text: str) -> None:
+        self._rerp_predictor = text or "Condition"
+        if self._view_mode == "rerp":
+            self._replot()
+
     def _update_view_controls(self) -> None:
         view = self._view_mode
         for widget in (self.band_label, self.band_selector):
@@ -963,6 +982,9 @@ class MainWindow(QMainWindow):
         for widget in (self.glm_condition_label, self.glm_condition_selector,
                        self.glm_chroma_selector):
             widget.setVisible(view == "glm")
+        for widget in (self.rerp_predictor_label, self.rerp_predictor_selector,
+                       self.rerp_import_button):
+            widget.setVisible(view == "rerp")
 
     def _show_computing(self, message: str) -> None:
         """Paint a 'Computing…' notice on the plot and show a wait cursor before a
@@ -1022,6 +1044,9 @@ class MainWindow(QMainWindow):
             return
         if self._view_mode == "glm":
             self._plot_glm(payload)
+            return
+        if self._view_mode == "rerp":
+            self._plot_rerp(payload)
             return
         self.plot.clear()
         if payload is None or not hasattr(payload, "get_data"):
@@ -1537,6 +1562,89 @@ class MainWindow(QMainWindow):
             ax.set_axis_off()
             ax.text(0.5, 0.5, "GLM unavailable.", ha="center", va="center")
             self.statusBar().showMessage(f"GLM: {exc}")
+        self._mpl_canvas.draw_idle()
+
+    def _plot_rerp(self, payload) -> None:
+        import mne
+
+        self._mpl_fig.clear()
+        ax = self._mpl_fig.add_subplot(111)
+        ax.set_axis_off()
+        if not isinstance(payload, mne.BaseEpochs):
+            ax.text(
+                0.5, 0.5,
+                "Regression ERP needs epochs.\nAdd 'Epochs (by events)' and Run.",
+                ha="center", va="center",
+            )
+            self._mpl_canvas.draw_idle()
+            return
+        options = ["Condition"]
+        if self._behavior_table is not None:
+            from .. import behavior as beh
+
+            options += beh.numeric_columns(self._behavior_table)
+        shown = [self.rerp_predictor_selector.itemText(i)
+                 for i in range(self.rerp_predictor_selector.count())]
+        if shown != options:
+            self.rerp_predictor_selector.blockSignals(True)
+            self.rerp_predictor_selector.clear()
+            self.rerp_predictor_selector.addItems(options)
+            if self._rerp_predictor not in options:
+                self._rerp_predictor = "Condition"
+            self.rerp_predictor_selector.setCurrentText(self._rerp_predictor)
+            self.rerp_predictor_selector.blockSignals(False)
+        predictor, label = None, "condition"
+        if self._rerp_predictor != "Condition":
+            values = np.asarray(
+                self._behavior_table[self._rerp_predictor].to_numpy(), dtype=float
+            )
+            if len(values) != len(payload):
+                ax.text(
+                    0.5, 0.5,
+                    f"Predictor rows ({len(values)}) must match epochs ({len(payload)}).",
+                    ha="center", va="center",
+                )
+                self._mpl_canvas.draw_idle()
+                return
+            predictor, label = values, self._rerp_predictor
+        elif len(payload.event_id) < 2:
+            ax.text(
+                0.5, 0.5,
+                "Condition predictor needs two conditions,\n"
+                "or import a behavioral predictor with 'Import behavior…'.",
+                ha="center", va="center",
+            )
+            self._mpl_canvas.draw_idle()
+            return
+        self._show_computing(f"Fitting regression ERP ({label})...")
+        try:
+            times, names, beta, tval = viz.regression_erp(payload, predictor=predictor)
+            self._mpl_fig.clear()
+            ax = self._mpl_fig.add_subplot(111)
+            channels = np.arange(len(names))
+            lim = max(float(np.nanmax(np.abs(beta))) * 1e6, 1e-9)
+            image = ax.imshow(
+                beta * 1e6, aspect="auto", origin="lower", cmap="RdBu_r",
+                vmin=-lim, vmax=lim, extent=[times[0], times[-1], -0.5, len(names) - 0.5],
+            )
+            ax.contour(
+                times, channels, (np.abs(tval) > 2.0).astype(float),
+                levels=[0.5], colors="black", linewidths=0.8,
+            )
+            ax.set_yticks(channels)
+            ax.set_yticklabels(names, fontsize=7)
+            ax.set_xlabel("Time (s)")
+            ax.set_title(f"Regression ERP: {label} (beta in µV; |t|>2 outlined)")
+            self._mpl_fig.colorbar(image, ax=ax, label="beta (µV)")
+            self.statusBar().showMessage(f"Regression ERP complete: {label}")
+        except Exception as exc:
+            self._mpl_fig.clear()
+            ax = self._mpl_fig.add_subplot(111)
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "Regression ERP unavailable.", ha="center", va="center")
+            self.statusBar().showMessage(f"Regression ERP: {exc}")
+        finally:
+            self._done_computing()
         self._mpl_canvas.draw_idle()
 
     def _plot_traces(self, payload) -> None:

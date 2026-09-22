@@ -25,6 +25,7 @@ from cortica.viz import (  # noqa: E402
     decoding_csp,
     glm_analysis,
     glm_conditions,
+    regression_erp,
     source_localization,
     spatiotemporal_cluster_test,
     spectrum,
@@ -176,6 +177,21 @@ def test_cluster_test_returns_condition_means_and_mask():
     times, mean_a, mean_b, sig, labels = cluster_test(epochs, n_permutations=100)
     assert len(mean_a) == len(mean_b) == len(sig) == len(times)
     assert len(labels) == 2
+
+
+def test_regression_erp_returns_channel_by_time_maps():
+    epochs = EventEpochs().apply(eeg_sample(), {"tmin": -0.1, "tmax": 0.4}).payload
+    times, names, beta, tval = regression_erp(epochs)
+    assert len(names) == 10
+    assert beta.shape == (10, len(times))
+    assert tval.shape == (10, len(times))
+
+
+def test_regression_erp_accepts_a_continuous_predictor():
+    epochs = EventEpochs().apply(eeg_sample(), {"tmin": -0.1, "tmax": 0.4}).payload
+    predictor = np.arange(len(epochs), dtype=float)
+    times, names, beta, tval = regression_erp(epochs, predictor=predictor)
+    assert beta.shape == (10, len(times))
 
 
 def test_glm_analysis_returns_per_channel_condition_betas():

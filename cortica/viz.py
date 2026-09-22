@@ -260,6 +260,37 @@ def glm_analysis(payload, stim_dur=5.0, drift_order=1):
     return run_glm(payload, design).to_dataframe()
 
 
+def regression_erp(epochs, predictor=None):
+    """Regression ERP (rERP): regress single-trial EEG against a predictor.
+
+    ``predictor`` is a per-epoch numeric array; when ``None`` the two conditions are
+    used as a 0/1 predictor. Returns ``(times, ch_names, beta, tval)`` where ``beta``
+    (the regression coefficient waveform, in data units per unit predictor) and
+    ``tval`` are both shaped ``(n_channels, n_times)``. Unlike plain averaging this
+    also handles continuous predictors and models overlapping activity.
+    """
+    from mne.stats import linear_regression
+
+    n = len(epochs)
+    if predictor is None:
+        codes = epochs.events[:, 2]
+        conditions = sorted(set(codes))
+        if len(conditions) < 2:
+            raise ValueError("Regression ERP needs a predictor or two conditions.")
+        predictor = (codes == conditions[-1]).astype(float)
+    predictor = np.asarray(predictor, dtype=float)
+    if len(predictor) != n:
+        raise ValueError(f"Predictor length ({len(predictor)}) must match epochs ({n}).")
+    design = np.column_stack([np.ones(n), predictor])
+    effect = linear_regression(epochs, design, names=["Intercept", "effect"])["effect"]
+    return (
+        np.asarray(effect.beta.times),
+        list(effect.beta.ch_names),
+        np.asarray(effect.beta.data),
+        np.asarray(effect.t_val.data),
+    )
+
+
 def glm_conditions(table):
     """Real experimental conditions in a GLM table (drops drift/constant regressors)."""
     conditions = [

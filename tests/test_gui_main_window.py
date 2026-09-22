@@ -378,6 +378,32 @@ def test_brain_behavior_view_renders_a_correlation_map(qtbot):
     assert w._view_mode == "behavior"
 
 
+def test_rerp_view_renders_with_condition_predictor(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_events", {"tmin": -0.1, "tmax": 0.4})
+    w.state.run_sync()
+    w._set_view("rerp")  # regresses EEG on the condition, must render
+    assert w._view_mode == "rerp"
+    assert w.rerp_predictor_selector.count() >= 1  # "Condition" populated
+
+
+def test_rerp_view_uses_a_continuous_behavior_predictor(qtbot):
+    import pandas as pd
+
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_events", {"tmin": -0.1, "tmax": 0.4})
+    w.state.run_sync()
+    n_trials = len(w.state.result.payload)
+    w._behavior_table = pd.DataFrame({"rt": list(range(n_trials))})
+    w._set_view("rerp")
+    w.rerp_predictor_selector.setCurrentText("rt")  # continuous predictor from behavior
+    assert w._rerp_predictor == "rt"
+
+
 def test_glm_view_guides_without_haemoglobin(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)
