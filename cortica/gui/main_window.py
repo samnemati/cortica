@@ -186,6 +186,9 @@ class MainWindow(QMainWindow):
         source_action = QAction("Localize sources…", self)
         source_action.triggered.connect(self._localize_sources)
         toolbar.addAction(source_action)
+        group_action = QAction("Group analysis…", self)
+        group_action.triggered.connect(self._open_group_analysis)
+        toolbar.addAction(group_action)
 
         # Keep the same actions in a menu too (native menu bar on macOS/Linux).
         sample_menu = self.menuBar().addMenu("Sample")
@@ -726,6 +729,16 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Exported {what} to {path}")
         except Exception as exc:
             self.statusBar().showMessage(f"Could not export values: {exc}")
+
+    # ---- group analysis -----------------------------------------------------
+    def _open_group_analysis(self) -> None:
+        from .group_dialog import GroupDialog
+
+        ds = self.state.current()
+        payload = getattr(ds, "payload", None) if ds else None
+        channels = list(getattr(payload, "ch_names", [])) if payload is not None else None
+        self._group_dialog = GroupDialog(channels=channels, parent=self)
+        self._group_dialog.show()
 
     # ---- brain-behavior -----------------------------------------------------
     def _import_behavior(self) -> None:
