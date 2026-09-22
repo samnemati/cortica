@@ -48,7 +48,7 @@ class ScalpCouplingIndex(Step):
     def check(self, ds) -> None:
         if "fnirs_od" not in _channel_types(ds.payload):
             raise StepError(
-                "Scalp coupling index needs optical-density data — add Optical density first."
+                "Scalp coupling index needs optical-density data. Add Optical density first."
             )
 
     def run(self, ds, p):
@@ -71,7 +71,7 @@ class Tddr(Step):
 
     def check(self, ds) -> None:
         if "fnirs_od" not in _channel_types(ds.payload):
-            raise StepError("TDDR needs optical-density data — add Optical density first.")
+            raise StepError("TDDR needs optical-density data. Add Optical density first.")
 
     def run(self, ds, p):
         from mne.preprocessing.nirs import temporal_derivative_distribution_repair
@@ -90,10 +90,78 @@ class BeerLambert(Step):
     def check(self, ds) -> None:
         if "fnirs_od" not in _channel_types(ds.payload):
             raise StepError(
-                "Beer–Lambert needs optical-density data — add Optical density first."
+                "Beer-Lambert needs optical-density data. Add Optical density first."
             )
 
     def run(self, ds, p):
         from mne.preprocessing.nirs import beer_lambert_law
 
         return ds.derive(beer_lambert_law(ds.payload.copy(), ppf=p["ppf"]))
+
+
+@register
+class ShortChannelRegression(Step):
+    id = "short_channel_regression"
+    name = "Short-channel regression"
+    category = "Preprocess"
+    modalities = ["fnirs"]
+    params = []
+
+    def check(self, ds) -> None:
+        if "fnirs_od" not in _channel_types(ds.payload):
+            raise StepError(
+                "Short-channel regression needs optical-density data. Add Optical density first."
+            )
+        from mne_nirs.channels import get_short_channels
+
+        try:
+            has_short = len(get_short_channels(ds.payload).ch_names) > 0
+        except Exception:
+            has_short = False
+        if not has_short:
+            raise StepError(
+                "Short-channel regression needs short-separation channels in the montage."
+            )
+
+    def run(self, ds, p):
+        from mne_nirs.signal_enhancement import short_channel_regression
+
+        return ds.derive(short_channel_regression(ds.payload.copy()))
+
+
+@register
+class EnhanceNegativeCorrelation(Step):
+    id = "enhance_negative_correlation"
+    name = "Enhance HbO/HbR anti-correlation"
+    category = "Preprocess"
+    modalities = ["fnirs"]
+    params = []
+
+    def check(self, ds) -> None:
+        if not ({"hbo", "hbr"} & _channel_types(ds.payload)):
+            raise StepError(
+                "Enhancing anti-correlation needs haemoglobin data. Add Beer-Lambert law first."
+            )
+
+    def run(self, ds, p):
+        from mne_nirs.signal_enhancement import enhance_negative_correlation
+
+        return ds.derive(enhance_negative_correlation(ds.payload.copy()))
+
+
+@register
+class KeepLongChannels(Step):
+    id = "keep_long_channels"
+    name = "Keep long channels"
+    category = "Artifacts & quality"
+    modalities = ["fnirs"]
+    params = []
+
+    def check(self, ds) -> None:
+        if not (_channel_types(ds.payload) & {"fnirs_cw_amplitude", "fnirs_od", "hbo", "hbr"}):
+            raise StepError("Keep long channels needs fNIRS data.")
+
+    def run(self, ds, p):
+        from mne_nirs.channels import get_long_channels
+
+        return ds.derive(get_long_channels(ds.payload.copy()))

@@ -43,27 +43,50 @@ def eeg_sample(seconds: float = 10.0, sfreq: float = 200.0) -> Dataset:
 
 
 def fnirs_sample(seconds: float = 60.0, sfreq: float = 8.0) -> Dataset:
-    """A synthetic 4-pair fNIRS recording as raw CW amplitude (two wavelengths each).
+    """A synthetic fNIRS recording as raw CW amplitude (two wavelengths each).
 
-    Built as raw optical amplitude with optode geometry so the real fNIRS chain
-    (optical density -> Beer-Lambert, SCI, TDDR) runs on it.
+    Built as raw optical amplitude with optode geometry so the full fNIRS chain runs
+    on it: four long (3 cm) source-detector pairs plus one short-separation (0.8 cm)
+    pair that carries only systemic signal, and alternating Task/Control blocks so the
+    GLM and short-channel regression have something to work with.
     """
     import mne
 
     n = int(seconds * sfreq)
     t = np.arange(n) / sfreq
     rng = np.random.RandomState(7)
+
+    # Task design: alternating Task/Control blocks.
+    block = 4.0
+    onsets = np.arange(5.0, seconds - block, 7.0)
+    labels = ["Task" if i % 2 == 0 else "Control" for i in range(len(onsets))]
+    task = np.zeros(n)
+    for onset, label in zip(onsets, labels):
+        if label == "Task":
+            task[int(onset * sfreq) : int((onset + block) * sfreq)] = 1.0
+
+    # Systemic signal shared by all channels (slow Mayer wave + cardiac-band term).
+    systemic = 0.5 * np.sin(2 * np.pi * 0.05 * t) + 0.1 * np.sin(2 * np.pi * 1.0 * t)
+
     geometry = {}
     names, rows = [], []
-    for pair in range(1, 5):
+    for pair in range(1, 5):  # four long pairs (3 cm): systemic + task response
         key = f"S{pair}_D{pair}"
         source = np.array([0.03 * (pair - 1), 0.0, 0.0])
         detector = source + np.array([0.03, 0.0, 0.0])
         geometry[key] = (source, detector)
-        hemodynamic = 0.5 * np.sin(2 * np.pi * 0.05 * t) + 1.0  # positive, slow drift
+        base = 1.0 + 0.5 * systemic + 0.4 * task
         for wavelength in (760, 850):
             names.append(f"{key} {wavelength}")
-            rows.append(hemodynamic * 1e-3 + rng.standard_normal(n) * 1e-5)
+            rows.append(base * 1e-3 + rng.standard_normal(n) * 1e-5)
+    # One short pair (0.8 cm): systemic only, no task response.
+    short_key = "S5_D5"
+    short_source = np.array([0.0, 0.02, 0.0])
+    geometry[short_key] = (short_source, short_source + np.array([0.008, 0.0, 0.0]))
+    for wavelength in (760, 850):
+        names.append(f"{short_key} {wavelength}")
+        rows.append((1.0 + 0.5 * systemic) * 1e-3 + rng.standard_normal(n) * 1e-5)
+
     info = mne.create_info(names, sfreq, ch_types="fnirs_cw_amplitude")
     raw = mne.io.RawArray(np.vstack(rows), info, verbose=False)
     for ch in raw.info["chs"]:
@@ -73,4 +96,5 @@ def fnirs_sample(seconds: float = 60.0, sfreq: float = 8.0) -> Dataset:
         ch["loc"][3:6] = source
         ch["loc"][6:9] = detector
         ch["loc"][9] = float(wavelength)  # MNE reads the wavelength from here
+    raw.set_annotations(mne.Annotations(onsets, [block] * len(onsets), labels))
     return dataset_from_raw(raw)
