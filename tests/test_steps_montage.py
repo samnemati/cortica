@@ -18,8 +18,24 @@ def _raw_1020():
 def test_set_montage_adds_electrode_positions():
     ds = dataset_from_raw(_raw_1020())
     assert ds.payload.get_montage() is None
-    out = SetMontage().apply(ds, {"montage": "colin27_1005"})
+    out = SetMontage().apply(ds, {"montage": "standard_1005"})
     assert out.payload.get_montage() is not None
+
+
+def test_set_montage_loads_a_custom_file(tmp_path):
+    path = tmp_path / "custom.tsv"
+    positions = {
+        "Fp1": (-0.03, 0.08, 0.0), "Fp2": (0.03, 0.08, 0.0),
+        "C3": (-0.05, 0.0, 0.07), "C4": (0.05, 0.0, 0.07),
+        "O1": (-0.03, -0.08, 0.0), "O2": (0.03, -0.08, 0.0),
+    }
+    lines = ["name\tx\ty\tz"] + [f"{n}\t{x}\t{y}\t{z}" for n, (x, y, z) in positions.items()]
+    path.write_text("\n".join(lines) + "\n")
+    ds = dataset_from_raw(_raw_1020())
+    out = SetMontage().apply(ds, {"montage": "standard_1005", "custom_file": str(path)})
+    montage = out.payload.get_montage()
+    assert montage is not None
+    assert set(montage.ch_names) == set(positions)  # the custom file won, not the built-in
 
 
 def test_set_montage_registered():
