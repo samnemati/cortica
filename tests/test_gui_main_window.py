@@ -424,6 +424,18 @@ def test_glm_view_renders_for_fnirs_haemoglobin(qtbot):
     assert w.glm_condition_selector.count() >= 2  # Task / Control populated
 
 
+def test_glm_view_topomap_display_renders(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_fnirs_sample()
+    w.state.add_step("optical_density")
+    w.state.add_step("beer_lambert", {"ppf": 6.0})
+    w.state.run_sync()
+    w._set_view("glm")
+    w.glm_display_selector.setCurrentText("Topomap")  # fNIRS brain-space map, must render
+    assert w._glm_display == "topomap"
+
+
 def test_glm_view_renders_a_contrast(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)

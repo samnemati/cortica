@@ -138,6 +138,7 @@ class MainWindow(QMainWindow):
         self._behavior_method = "pearson"
         self._glm_condition = None
         self._glm_chroma = "hbo"
+        self._glm_display = "bars"
         self._glm_cache = None  # (payload, dataframe)
         self._rerp_predictor = "Condition"
         self._source_result = None
@@ -343,6 +344,10 @@ class MainWindow(QMainWindow):
         self.glm_chroma_selector.addItems(["HbO", "HbR"])
         self.glm_chroma_selector.currentTextChanged.connect(self._on_glm_chroma_changed)
         view_row.addWidget(self.glm_chroma_selector)
+        self.glm_display_selector = QComboBox()
+        self.glm_display_selector.addItems(["Bars", "Topomap"])
+        self.glm_display_selector.currentTextChanged.connect(self._on_glm_display_changed)
+        view_row.addWidget(self.glm_display_selector)
         # Regression-ERP controls (hidden unless the rERP view is active).
         self.rerp_predictor_label = QLabel("Predictor:")
         view_row.addWidget(self.rerp_predictor_label)
@@ -954,6 +959,11 @@ class MainWindow(QMainWindow):
         if self._view_mode == "glm":
             self._replot()
 
+    def _on_glm_display_changed(self, text: str) -> None:
+        self._glm_display = "topomap" if text == "Topomap" else "bars"
+        if self._view_mode == "glm":
+            self._replot()
+
     def _on_rerp_predictor_changed(self, text: str) -> None:
         self._rerp_predictor = text or "Condition"
         if self._view_mode == "rerp":
@@ -980,7 +990,7 @@ class MainWindow(QMainWindow):
                        self.behavior_column_selector, self.behavior_method_selector):
             widget.setVisible(view == "behavior")
         for widget in (self.glm_condition_label, self.glm_condition_selector,
-                       self.glm_chroma_selector):
+                       self.glm_chroma_selector, self.glm_display_selector):
             widget.setVisible(view == "glm")
         for widget in (self.rerp_predictor_label, self.rerp_predictor_selector,
                        self.rerp_import_button):
@@ -1545,8 +1555,9 @@ class MainWindow(QMainWindow):
                 table = table[table["Condition"] == selection]
                 value_column, kind = "theta", f"activation: {selection}"
             rows = table[table["Chroma"] == self._glm_chroma].sort_values("ch_name")
-            names = [str(n).split(" ")[0] for n in rows["ch_name"]]
-            values = rows[value_column].to_numpy() * 1e6
+            full_names = [str(n) for n in rows["ch_name"]]
+            names = [n.split(" ")[0] for n in full_names]
+            values = rows[value_column].to_numpy()
             significant = (
                 rows["Significant"].to_numpy()
                 if "Significant" in rows
@@ -1554,18 +1565,12 @@ class MainWindow(QMainWindow):
             )
             self._mpl_fig.clear()
             ax = self._mpl_fig.add_subplot(111)
-            positions = list(range(len(names)))
-            colors = ["#2f855a" if s else "#94a3b8" for s in significant]
-            ax.barh(positions, list(values), color=colors)
-            ax.set_yticks(positions)
-            ax.set_yticklabels(names, fontsize=7)
-            ax.invert_yaxis()
-            ax.axvline(0, color="0.7", linewidth=0.8)
-            ax.set_xlabel(f"{self._glm_chroma.upper()} {value_column} (x1e-6)")
             n_sig = int(np.sum(significant))
-            ax.set_title(
-                f"GLM {kind}, {self._glm_chroma.upper()} ({n_sig} significant, shown green)"
-            )
+            title = f"GLM {kind}, {self._glm_chroma.upper()} ({n_sig} significant)"
+            if self._glm_display == "topomap":
+                self._draw_glm_topomap(ax, payload, full_names, values, title)
+            else:
+                self._draw_glm_bars(ax, names, values * 1e6, significant, value_column, title)
             self._mpl_fig.tight_layout()
             self.statusBar().showMessage(
                 f"GLM {kind} {self._glm_chroma.upper()} ({n_sig} significant channels)"
@@ -1577,6 +1582,32 @@ class MainWindow(QMainWindow):
             ax.text(0.5, 0.5, "GLM unavailable.", ha="center", va="center")
             self.statusBar().showMessage(f"GLM: {exc}")
         self._mpl_canvas.draw_idle()
+
+    def _draw_glm_bars(self, ax, names, values, significant, value_column, title) -> None:
+        positions = list(range(len(names)))
+        colors = ["#2f855a" if s else "#94a3b8" for s in significant]
+        ax.barh(positions, list(values), color=colors)
+        ax.set_yticks(positions)
+        ax.set_yticklabels(names, fontsize=7)
+        ax.invert_yaxis()
+        ax.axvline(0, color="0.7", linewidth=0.8)
+        ax.set_xlabel(f"{self._glm_chroma.upper()} {value_column} (x1e-6)")
+        ax.set_title(title + ", green = significant")
+
+    def _draw_glm_topomap(self, ax, payload, full_names, values, title) -> None:
+        import mne
+
+        picks = mne.pick_types(payload.info, fnirs=self._glm_chroma)
+        pick_names = [payload.ch_names[i] for i in picks]
+        value_by_name = dict(zip(full_names, values))
+        ordered = [float(value_by_name.get(name, 0.0)) for name in pick_names]
+        info = mne.pick_info(payload.info, picks)
+        lim = max(abs(min(ordered)), abs(max(ordered)), 1e-12) if ordered else 1e-12
+        image, _ = mne.viz.plot_topomap(
+            ordered, info, axes=ax, show=False, cmap="RdBu_r", vlim=(-lim, lim)
+        )
+        ax.set_title(title)
+        self._mpl_fig.colorbar(image, ax=ax)
 
     def _plot_rerp(self, payload) -> None:
         import mne
