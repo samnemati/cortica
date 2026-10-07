@@ -10,8 +10,10 @@ mne = pytest.importorskip("mne")
 
 from cortica.core.registry import default_registry  # noqa: E402
 from cortica.io import dataset_from_raw  # noqa: E402
-from cortica.samples import eeg_sample  # noqa: E402
-from cortica.samples import lfp_sample  # noqa: E402
+from cortica.samples import (
+    eeg_sample,  # noqa: E402
+    lfp_sample,  # noqa: E402
+)
 from cortica.steps.preprocess import (  # noqa: E402
     BandpassFilter,
     BipolarReference,
