@@ -199,6 +199,9 @@ class MainWindow(QMainWindow):
         fnirs_action = QAction("Load fNIRS sample", self)
         fnirs_action.triggered.connect(self._load_fnirs_sample)
         toolbar.addAction(fnirs_action)
+        lfp_action = QAction("Load LFP sample", self)
+        lfp_action.triggered.connect(self._load_lfp_sample)
+        toolbar.addAction(lfp_action)
         toolbar.addSeparator()
         open_action = QAction("Open…", self)
         open_action.triggered.connect(self._open)
@@ -226,6 +229,7 @@ class MainWindow(QMainWindow):
         sample_menu = self.menuBar().addMenu("Sample")
         sample_menu.addAction(eeg_action)
         sample_menu.addAction(fnirs_action)
+        sample_menu.addAction(lfp_action)
 
         left = QWidget()
         left_layout = QVBoxLayout(left)
@@ -690,6 +694,12 @@ class MainWindow(QMainWindow):
 
         self.state.set_source(samples.fnirs_sample())
         self.statusBar().showMessage("Loaded synthetic fNIRS sample.")
+
+    def _load_lfp_sample(self) -> None:
+        from .. import samples
+
+        self.state.set_source(samples.lfp_sample())
+        self.statusBar().showMessage("Loaded synthetic STN-LFP (DBS) sample.")
 
     # ---- report -------------------------------------------------------------
     def _export_report(self) -> None:

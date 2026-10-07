@@ -75,6 +75,14 @@ def test_load_fnirs_sample_switches_modality_to_fnirs(qtbot):
     assert w.state.modality == "fnirs"
 
 
+def test_load_lfp_sample_populates_dbs_channels(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_lfp_sample()
+    assert "dbs" in set(w.state.source.payload.get_channel_types())
+    assert w.library.count() > 0
+
+
 def test_selecting_a_step_shows_its_param_form(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)

@@ -4,7 +4,7 @@ import pytest
 
 mne = pytest.importorskip("mne")
 
-from cortica.samples import eeg_sample, fnirs_sample  # noqa: E402
+from cortica.samples import eeg_sample, fnirs_sample, lfp_sample  # noqa: E402
 
 
 def test_eeg_sample_is_detected_as_eeg():
@@ -36,3 +36,10 @@ def test_fnirs_sample_is_detected_as_fnirs():
 def test_fnirs_sample_is_raw_cw_amplitude_so_the_chain_can_run():
     ds = fnirs_sample()
     assert "fnirs_cw_amplitude" in set(ds.payload.get_channel_types())
+
+
+def test_lfp_sample_is_dbs_electrophysiology():
+    ds = lfp_sample()
+    assert "dbs" in set(ds.payload.get_channel_types())
+    assert ds.modality == "eeg"  # electrophysiology; the EEG-family steps apply
+    assert ds.meta["n_channels"] == 6  # two hemispheres x three contacts

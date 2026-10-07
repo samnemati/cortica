@@ -83,6 +83,53 @@ class ReReference(Step):
 
 
 @register
+class BipolarReference(Step):
+    id = "bipolar_reference"
+    name = "Bipolar reference (adjacent contacts)"
+    category = "Preprocess"
+    modalities = ["eeg"]
+    params = []
+
+    def check(self, ds) -> None:
+        import mne
+
+        if not isinstance(ds.payload, mne.io.BaseRaw):
+            raise StepError("Bipolar reference needs continuous (Raw) data.")
+
+    def run(self, ds, p):
+        import re
+
+        import mne
+
+        def lead(name):  # the electrode/lead, i.e. the name without its contact number
+            return re.sub(r"[\s_\-]*\d+$", "", name)
+
+        def contact_number(name):
+            match = re.search(r"(\d+)$", name)
+            return int(match.group(1)) if match else 0
+
+        groups: dict = {}
+        for name in ds.payload.ch_names:
+            groups.setdefault(lead(name), []).append(name)
+
+        anodes, cathodes, new_names = [], [], []
+        for contacts in groups.values():
+            ordered = sorted(contacts, key=contact_number)
+            for anode, cathode in zip(ordered[:-1], ordered[1:]):
+                anodes.append(anode)
+                cathodes.append(cathode)
+                new_names.append(f"{anode}-{cathode}")
+        if not anodes:
+            raise StepError("Bipolar reference needs at least two contacts on a lead.")
+
+        bipolar = mne.set_bipolar_reference(
+            ds.payload.copy(), anode=anodes, cathode=cathodes,
+            ch_name=new_names, verbose=False,
+        )
+        return ds.derive(bipolar)
+
+
+@register
 class InterpolateBads(Step):
     id = "interpolate_bads"
     name = "Interpolate bad channels"

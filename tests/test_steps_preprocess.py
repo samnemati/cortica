@@ -11,13 +11,23 @@ mne = pytest.importorskip("mne")
 from cortica.core.registry import default_registry  # noqa: E402
 from cortica.io import dataset_from_raw  # noqa: E402
 from cortica.samples import eeg_sample  # noqa: E402
+from cortica.samples import lfp_sample  # noqa: E402
 from cortica.steps.preprocess import (  # noqa: E402
     BandpassFilter,
+    BipolarReference,
     InterpolateBads,
     NotchFilter,
     ReReference,
     Resample,
 )
+
+
+def test_bipolar_reference_pairs_adjacent_contacts_within_each_lead():
+    out = BipolarReference().apply(lfp_sample(), {})
+    names = out.payload.ch_names
+    assert "L_STN_0-L_STN_1" in names and "L_STN_1-L_STN_2" in names
+    assert len(names) == 4  # two leads x two adjacent pairs each
+    assert not any("L_STN_2-R_STN_0" == n for n in names)  # no cross-lead pair
 
 SFREQ = 200.0
 

@@ -98,3 +98,42 @@ def fnirs_sample(seconds: float = 60.0, sfreq: float = 8.0) -> Dataset:
         ch["loc"][9] = float(wavelength)  # MNE reads the wavelength from here
     raw.set_annotations(mne.Annotations(onsets, [block] * len(onsets), labels))
     return dataset_from_raw(raw)
+
+
+def lfp_sample(seconds: float = 60.0, sfreq: float = 500.0) -> Dataset:
+    """A synthetic subthalamic (STN) LFP recording for DBS-style analysis.
+
+    Two hemispheres of three contacts each, as the ``dbs`` channel type at 500 Hz, with
+    a bursting 20 Hz beta rhythm (the Parkinsonian biomarker), a 1/f-ish background, and
+    50 Hz line noise shared across contacts. Beta amplitude grows across contacts so a
+    bipolar re-reference preserves local beta rather than cancelling it.
+    """
+    import mne
+
+    n = int(seconds * sfreq)
+    t = np.arange(n) / sfreq
+    rng = np.random.RandomState(11)
+
+    # Beta (20 Hz) with a bursting amplitude envelope: a low baseline plus short bursts.
+    envelope = np.full(n, 0.2)
+    for _ in range(int(seconds * 1.5)):
+        start = rng.randint(0, n)
+        duration = int(rng.uniform(0.1, 0.4) * sfreq)
+        envelope[start : start + duration] += rng.uniform(0.6, 1.2)
+    beta = envelope * np.sin(2 * np.pi * 20.0 * t)
+
+    background = np.cumsum(rng.standard_normal(n))  # 1/f-ish (brown) background
+    background /= np.std(background) + 1e-12
+    line = 0.1 * np.sin(2 * np.pi * 60.0 * t)  # mains, shared -> cancels in bipolar
+
+    names, rows = [], []
+    for hemisphere in ("L", "R"):
+        for contact in range(3):
+            gain = 1.0 + 0.5 * contact  # gradient so adjacent contacts differ
+            names.append(f"{hemisphere}_STN_{contact}")
+            signal = gain * beta + 0.5 * background + line + rng.standard_normal(n) * 0.15
+            rows.append(signal * 1e-6)
+
+    info = mne.create_info(names, sfreq, ch_types="dbs")
+    raw = mne.io.RawArray(np.vstack(rows), info, verbose=False)
+    return dataset_from_raw(raw)
