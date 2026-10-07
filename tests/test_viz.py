@@ -18,6 +18,7 @@ from cortica.viz import (  # noqa: E402
     CONNECTIVITY_METHODS,
     DECODE_CLASSIFIERS,
     band_power,
+    channel_quality,
     cluster_test,
     condition_comparison,
     connectivity,
@@ -178,6 +179,19 @@ def test_cluster_test_returns_condition_means_and_mask():
     times, mean_a, mean_b, sig, labels = cluster_test(epochs, n_permutations=100)
     assert len(mean_a) == len(mean_b) == len(sig) == len(times)
     assert len(labels) == 2
+
+
+def test_channel_quality_returns_a_metric_per_eeg_channel():
+    names, values, bad, label = channel_quality(eeg_sample().payload)
+    assert len(names) == len(values) == len(bad) == 10
+    assert "std" in label.lower()
+
+
+def test_channel_quality_uses_sci_for_fnirs():
+    od = OpticalDensity().apply(fnirs_sample(), {}).payload
+    names, values, bad, label = channel_quality(od)
+    assert "coupling" in label.lower()
+    assert all(-0.01 <= v <= 1.01 for v in values)  # SCI is bounded in [0, 1]
 
 
 def test_regression_erp_returns_channel_by_time_maps():

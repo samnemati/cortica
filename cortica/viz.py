@@ -260,6 +260,35 @@ def glm_analysis(payload, stim_dur=5.0, drift_order=1):
     return run_glm(payload, design).to_dataframe()
 
 
+def channel_quality(payload):
+    """Per-channel quality metric for flagging bad channels. Returns
+    ``(ch_names, values, bad_mask, label)``.
+
+    fNIRS uses the scalp coupling index (SCI, 0-1; low = poor optode contact);
+    computing optical density on the fly when given raw amplitude. Other data uses a
+    robust outlier test on per-channel standard deviation (flags noisy or flat
+    channels).
+    """
+    names = list(payload.ch_names)
+    types = set(payload.get_channel_types())
+    if types & {"fnirs_cw_amplitude", "fnirs_od"}:
+        from mne.preprocessing.nirs import optical_density, scalp_coupling_index
+
+        od = payload if "fnirs_od" in types else optical_density(payload, verbose=False)
+        sci = np.asarray(scalp_coupling_index(od, verbose=False))
+        return names, sci, sci < 0.5, "Scalp coupling index (0-1; low = poor contact)"
+
+    data = np.asarray(payload.get_data())
+    if data.ndim == 3:  # epochs -> per-channel across epochs and time
+        data = np.moveaxis(data, 1, 0).reshape(data.shape[1], -1)
+    std = data.std(axis=1)
+    log_std = np.log(std + 1e-30)
+    median = np.median(log_std)
+    mad = np.median(np.abs(log_std - median)) * 1.4826 + 1e-30
+    bad = np.abs((log_std - median) / mad) > 3.0
+    return names, std, bad, "Channel std (robust outliers flagged)"
+
+
 def regression_erp(epochs, predictor=None):
     """Regression ERP (rERP): regress single-trial EEG against a predictor.
 

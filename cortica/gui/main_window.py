@@ -99,6 +99,7 @@ _VIEWS = [
     ("Power spectrum", "psd"),
     ("Topography", "topo"),
     ("Time-frequency", "tfr"),
+    ("Signal quality", "quality"),
     ("Connectivity", "conn"),
     ("Decoding", "decoding"),
     ("Statistics", "stats"),
@@ -111,7 +112,7 @@ _VIEWS = [
 
 #: View modes rendered on the matplotlib canvas (the rest use pyqtgraph).
 _MPL_VIEWS = (
-    "topo", "tfr", "conn", "decoding", "stats", "source", "compare",
+    "topo", "tfr", "quality", "conn", "decoding", "stats", "source", "compare",
     "behavior", "rerp", "glm",
 )
 
@@ -1034,6 +1035,9 @@ class MainWindow(QMainWindow):
         if self._view_mode == "tfr":
             self._plot_tfr(payload)
             return
+        if self._view_mode == "quality":
+            self._plot_quality(payload)
+            return
         if self._view_mode == "conn":
             self._plot_connectivity(payload)
             return
@@ -1140,6 +1144,37 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Time-frequency: {exc}")
         finally:
             self._done_computing()
+        self._mpl_canvas.draw_idle()
+
+    def _plot_quality(self, payload) -> None:
+        self._mpl_fig.clear()
+        ax = self._mpl_fig.add_subplot(111)
+        if payload is None or not hasattr(payload, "get_data"):
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "Load a recording to check signal quality.",
+                    ha="center", va="center")
+            self._mpl_canvas.draw_idle()
+            return
+        try:
+            names, values, bad, label = viz.channel_quality(payload)
+            positions = list(range(len(names)))
+            colors = ["#c53030" if b else "#2b6cb0" for b in bad]
+            ax.barh(positions, list(values), color=colors)
+            ax.set_yticks(positions)
+            ax.set_yticklabels(names, fontsize=6)
+            ax.invert_yaxis()
+            ax.set_xlabel(label)
+            if "coupling" in label.lower():
+                ax.axvline(0.5, color="0.6", linestyle="--", linewidth=0.8)
+            n_bad = int(np.sum(bad))
+            ax.set_title(f"Signal quality ({n_bad} flagged, shown red)")
+            self._mpl_fig.tight_layout()
+            self.statusBar().showMessage(f"Signal quality: {n_bad} channel(s) flagged")
+        except Exception as exc:
+            ax.clear()
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "Quality metric unavailable.", ha="center", va="center")
+            self.statusBar().showMessage(f"Signal quality: {exc}")
         self._mpl_canvas.draw_idle()
 
     def _plot_connectivity(self, payload) -> None:

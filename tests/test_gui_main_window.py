@@ -209,6 +209,24 @@ def test_time_frequency_view_renders(qtbot):
     assert w._view_mode == "tfr"
 
 
+def test_signal_quality_view_renders_for_eeg(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w._set_view("quality")  # per-channel std with outliers flagged, must render
+    assert w._view_mode == "quality"
+
+
+def test_signal_quality_view_uses_sci_for_fnirs(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_fnirs_sample()
+    w.state.add_step("optical_density")
+    w.state.run_sync()
+    w._set_view("quality")  # scalp-coupling-index bars, must render
+    assert w._view_mode == "quality"
+
+
 def test_connectivity_is_a_view_option(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)
