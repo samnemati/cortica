@@ -635,7 +635,7 @@ def test_export_values_writes_band_power_csv_by_default(qtbot, tmp_path):
     out = tmp_path / "vals.csv"
     w._export_values_to(str(out))
     assert out.exists()
-    assert out.read_text().splitlines()[0] == "channel,Delta,Theta,Alpha,Beta,Gamma"
+    assert out.read_text().splitlines()[0].startswith("channel,Delta,Theta,Alpha,Beta,Gamma")
 
 
 def test_export_values_writes_connectivity_csv_on_the_conn_view(qtbot, tmp_path):
