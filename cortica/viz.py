@@ -260,6 +260,33 @@ def glm_analysis(payload, stim_dur=5.0, drift_order=1):
     return run_glm(payload, design).to_dataframe()
 
 
+def erp_peaks(evoked, tmin=None, tmax=None, mode="abs"):
+    """Per-channel ERP peak within ``[tmin, tmax]``. ``mode`` is ``"abs"``/``"pos"``/
+    ``"neg"``. Returns ``(ch_names, latencies, amplitudes)``; latencies in seconds,
+    amplitudes in the evoked's units (volts for EEG).
+    """
+    times = np.asarray(evoked.times)
+    data = np.asarray(evoked.data)  # (n_channels, n_times)
+    mask = np.ones(len(times), dtype=bool)
+    if tmin is not None:
+        mask &= times >= tmin
+    if tmax is not None:
+        mask &= times <= tmax
+    if not mask.any():
+        mask[:] = True
+    index = np.where(mask)[0]
+    window, window_times = data[:, index], times[index]
+    if mode == "pos":
+        peak = window.argmax(axis=1)
+    elif mode == "neg":
+        peak = window.argmin(axis=1)
+    else:
+        peak = np.abs(window).argmax(axis=1)
+    latencies = window_times[peak]
+    amplitudes = window[np.arange(window.shape[0]), peak]
+    return list(evoked.ch_names), latencies, amplitudes
+
+
 def channel_quality(payload):
     """Per-channel quality metric for flagging bad channels. Returns
     ``(ch_names, values, bad_mask, label)``.

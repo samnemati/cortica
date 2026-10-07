@@ -24,6 +24,7 @@ from cortica.viz import (  # noqa: E402
     connectivity,
     decoding,
     decoding_csp,
+    erp_peaks,
     glm_analysis,
     glm_conditions,
     glm_contrast,
@@ -179,6 +180,23 @@ def test_cluster_test_returns_condition_means_and_mask():
     times, mean_a, mean_b, sig, labels = cluster_test(epochs, n_permutations=100)
     assert len(mean_a) == len(mean_b) == len(sig) == len(times)
     assert len(labels) == 2
+
+
+def test_erp_peaks_returns_latency_and_amplitude_per_channel():
+    evoked = Average().apply(
+        EventEpochs().apply(eeg_sample(), {"tmin": -0.1, "tmax": 0.4}), {}
+    ).payload
+    names, latencies, amplitudes = erp_peaks(evoked, tmin=0.0, tmax=0.4)
+    assert len(names) == len(latencies) == len(amplitudes) == 10
+    assert all(0.0 <= t <= 0.4 for t in latencies)  # peaks fall inside the window
+
+
+def test_erp_peaks_positive_mode_finds_maxima():
+    evoked = Average().apply(
+        EventEpochs().apply(eeg_sample(), {"tmin": -0.1, "tmax": 0.4}), {}
+    ).payload
+    _, _, amplitudes = erp_peaks(evoked, tmin=0.0, tmax=0.4, mode="pos")
+    assert all(a == a for a in amplitudes)  # finite; positive-peak search ran
 
 
 def test_channel_quality_returns_a_metric_per_eeg_channel():

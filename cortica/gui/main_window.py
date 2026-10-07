@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -104,6 +105,7 @@ _VIEWS = [
     ("Decoding", "decoding"),
     ("Statistics", "stats"),
     ("Comparison", "compare"),
+    ("ERP peaks", "peaks"),
     ("Source", "source"),
     ("Brain-behavior", "behavior"),
     ("Regression (rERP)", "rerp"),
@@ -113,7 +115,7 @@ _VIEWS = [
 #: View modes rendered on the matplotlib canvas (the rest use pyqtgraph).
 _MPL_VIEWS = (
     "topo", "tfr", "quality", "conn", "decoding", "stats", "source", "compare",
-    "behavior", "rerp", "glm",
+    "peaks", "behavior", "rerp", "glm",
 )
 
 
@@ -142,6 +144,9 @@ class MainWindow(QMainWindow):
         self._glm_display = "bars"
         self._glm_cache = None  # (payload, dataframe)
         self._rerp_predictor = "Condition"
+        self._peak_mode = "abs"
+        self._peak_tmin = 0.0
+        self._peak_tmax = 0.8
         self._source_result = None
         self._source_busy = False
         self._src_signals = None
@@ -360,6 +365,27 @@ class MainWindow(QMainWindow):
         self.rerp_import_button.setToolTip("Load a per-trial CSV/Excel to use as a predictor")
         self.rerp_import_button.clicked.connect(self._import_behavior)
         view_row.addWidget(self.rerp_import_button)
+        # ERP-peak controls (hidden unless the ERP peaks view is active).
+        self.peak_mode_label = QLabel("Peak:")
+        view_row.addWidget(self.peak_mode_label)
+        self.peak_mode_selector = QComboBox()
+        self.peak_mode_selector.addItems(["Absolute", "Positive", "Negative"])
+        self.peak_mode_selector.currentTextChanged.connect(self._on_peak_mode_changed)
+        view_row.addWidget(self.peak_mode_selector)
+        self.peak_window_label = QLabel("Window (s):")
+        view_row.addWidget(self.peak_window_label)
+        self.peak_tmin_spin = QDoubleSpinBox()
+        self.peak_tmin_spin.setRange(-2.0, 3.0)
+        self.peak_tmin_spin.setSingleStep(0.05)
+        self.peak_tmin_spin.setValue(0.0)
+        self.peak_tmin_spin.valueChanged.connect(self._on_peak_window_changed)
+        view_row.addWidget(self.peak_tmin_spin)
+        self.peak_tmax_spin = QDoubleSpinBox()
+        self.peak_tmax_spin.setRange(-2.0, 3.0)
+        self.peak_tmax_spin.setSingleStep(0.05)
+        self.peak_tmax_spin.setValue(0.8)
+        self.peak_tmax_spin.valueChanged.connect(self._on_peak_window_changed)
+        view_row.addWidget(self.peak_tmax_spin)
         view_row.addStretch(1)
         # A Save-figure button lives right above the plot it saves, so it is always
         # visible regardless of how wide the toolbar is.
@@ -970,6 +996,17 @@ class MainWindow(QMainWindow):
         if self._view_mode == "rerp":
             self._replot()
 
+    def _on_peak_mode_changed(self, text: str) -> None:
+        self._peak_mode = {"Positive": "pos", "Negative": "neg"}.get(text, "abs")
+        if self._view_mode == "peaks":
+            self._replot()
+
+    def _on_peak_window_changed(self, _value=None) -> None:
+        self._peak_tmin = self.peak_tmin_spin.value()
+        self._peak_tmax = self.peak_tmax_spin.value()
+        if self._view_mode == "peaks":
+            self._replot()
+
     def _update_view_controls(self) -> None:
         view = self._view_mode
         for widget in (self.band_label, self.band_selector):
@@ -996,6 +1033,9 @@ class MainWindow(QMainWindow):
         for widget in (self.rerp_predictor_label, self.rerp_predictor_selector,
                        self.rerp_import_button):
             widget.setVisible(view == "rerp")
+        for widget in (self.peak_mode_label, self.peak_mode_selector,
+                       self.peak_window_label, self.peak_tmin_spin, self.peak_tmax_spin):
+            widget.setVisible(view == "peaks")
 
     def _show_computing(self, message: str) -> None:
         """Paint a 'Computing…' notice on the plot and show a wait cursor before a
@@ -1052,6 +1092,9 @@ class MainWindow(QMainWindow):
             return
         if self._view_mode == "compare":
             self._plot_compare(payload)
+            return
+        if self._view_mode == "peaks":
+            self._plot_peaks(payload)
             return
         if self._view_mode == "behavior":
             self._plot_behavior(payload)
@@ -1452,6 +1495,55 @@ class MainWindow(QMainWindow):
             ax.set_axis_off()
             ax.text(0.5, 0.5, "Comparison unavailable.", ha="center", va="center")
             self.statusBar().showMessage(f"Comparison: {exc}")
+        self._mpl_canvas.draw_idle()
+
+    def _plot_peaks(self, payload) -> None:
+        import mne
+
+        self._mpl_fig.clear()
+        ax = self._mpl_fig.add_subplot(111)
+        if not isinstance(payload, mne.Evoked):
+            ax.set_axis_off()
+            ax.text(
+                0.5, 0.5,
+                "ERP peaks need an averaged response (evoked).\n"
+                "Add 'Epochs (by events)' then 'Average', and Run.",
+                ha="center", va="center",
+            )
+            self._mpl_canvas.draw_idle()
+            return
+        try:
+            tmin, tmax = sorted((self._peak_tmin, self._peak_tmax))
+            names, latencies, amplitudes = viz.erp_peaks(
+                payload, tmin=tmin, tmax=tmax, mode=self._peak_mode
+            )
+            times = np.asarray(payload.times)
+            data = np.asarray(payload.data) * 1e6
+            ax.axvspan(tmin, tmax, color="0.92", zorder=0)
+            for i in range(len(names)):
+                ax.plot(times, data[i], linewidth=0.8, alpha=0.6)
+                ax.plot(latencies[i], amplitudes[i] * 1e6, "o", color="#c53030", markersize=4)
+            ax.axhline(0, color="0.8", linewidth=0.6)
+            ax.axvline(0, color="0.8", linewidth=0.6)
+            biggest = int(np.argmax(np.abs(amplitudes)))
+            ax.set_xlabel("Time (s)")
+            ax.set_ylabel("Amplitude (µV)")
+            ax.set_title(
+                f"ERP peaks ({self._peak_mode}, {tmin:.2f}-{tmax:.2f} s)  |  "
+                f"largest: {names[biggest]} at {latencies[biggest] * 1000:.0f} ms, "
+                f"{amplitudes[biggest] * 1e6:.1f} µV",
+                fontsize=9,
+            )
+            self._mpl_fig.tight_layout()
+            self.statusBar().showMessage(
+                f"ERP peaks: largest {names[biggest]} at {latencies[biggest] * 1000:.0f} ms"
+            )
+        except Exception as exc:
+            self._mpl_fig.clear()
+            ax = self._mpl_fig.add_subplot(111)
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "ERP peaks unavailable.", ha="center", va="center")
+            self.statusBar().showMessage(f"ERP peaks: {exc}")
         self._mpl_canvas.draw_idle()
 
     def _plot_behavior(self, payload) -> None:

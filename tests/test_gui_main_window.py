@@ -361,6 +361,27 @@ def test_statistics_spatiotemporal_mode_renders(qtbot):
     assert w._stats_mode == "spatiotemporal"
 
 
+def test_erp_peaks_view_guides_without_an_evoked(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()  # raw, not an evoked
+    w._set_view("peaks")  # shows guidance, must not raise
+    assert w._view_mode == "peaks"
+
+
+def test_erp_peaks_view_renders_for_an_evoked(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_eeg_sample()
+    w.state.add_step("epochs_events", {"tmin": -0.1, "tmax": 0.4})
+    w.state.add_step("average")
+    w.state.run_sync()  # result is an Evoked
+    w._set_view("peaks")  # waveforms + per-channel peak markers, must render
+    assert w._view_mode == "peaks"
+    w.peak_mode_selector.setCurrentText("Positive")
+    assert w._peak_mode == "pos"
+
+
 def test_comparison_view_renders_with_multi_condition_epochs(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)
