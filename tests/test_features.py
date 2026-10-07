@@ -32,7 +32,9 @@ def test_write_band_power_csv_has_header_and_channels(tmp_path):
     out = tmp_path / "power.csv"
     write_band_power_csv(eeg_sample().payload, str(out))
     text = out.read_text()
-    assert text.splitlines()[0] == "channel,Delta,Theta,Alpha,Beta,Gamma"
+    header = text.splitlines()[0]
+    assert header.startswith("channel,Delta,Theta,Alpha,Beta,Gamma")
+    assert "Beta_rel" in header  # relative power columns are included
     assert "O1" in text
 
 

@@ -40,13 +40,20 @@ def connectivity_table(epochs, method="plv", band="Alpha"):
 
 
 def write_band_power_csv(payload, path, picks=None) -> None:
-    """Write a channel-by-band power table to ``path`` as CSV."""
+    """Write a channel-by-band power table to ``path`` as CSV, with both absolute
+    power and relative power (``<band>_rel``, the fraction of 4-45 Hz power).
+    """
     names, bands, matrix = band_power_table(payload, picks=picks)
+    relative = np.column_stack(
+        [viz.relative_band_power(payload, band, picks=picks) for band in bands]
+    )
     with open(path, "w", newline="") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["channel", *bands])
-        for name, row in zip(names, matrix):
-            writer.writerow([name, *(f"{value:.6g}" for value in row)])
+        writer.writerow(["channel", *bands, *(f"{band}_rel" for band in bands)])
+        for i, name in enumerate(names):
+            writer.writerow(
+                [name, *(f"{v:.6g}" for v in matrix[i]), *(f"{v:.6g}" for v in relative[i])]
+            )
 
 
 def write_connectivity_csv(epochs, path, method="plv", band="Alpha") -> None:

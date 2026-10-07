@@ -31,6 +31,7 @@ from cortica.viz import (  # noqa: E402
     glm_conditions,
     glm_contrast,
     regression_erp,
+    relative_band_power,
     source_localization,
     spatiotemporal_cluster_test,
     spectrum,
@@ -87,6 +88,12 @@ def test_band_power_returns_one_value_per_channel():
 def test_alpha_band_power_exceeds_gamma_for_the_sample():
     ds = eeg_sample()
     assert band_power(ds.payload, "Alpha").mean() > band_power(ds.payload, "Gamma").mean()
+
+
+def test_relative_band_power_is_a_fraction_per_channel():
+    rel = relative_band_power(eeg_sample().payload, "Alpha")
+    assert rel.shape == (10,)
+    assert all(0.0 <= v <= 1.0 for v in rel)
 
 
 def test_traces_can_subset_channels():

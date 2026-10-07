@@ -55,6 +55,19 @@ def band_power(payload, band, picks=None):
     return psds[:, mask].mean(axis=1)
 
 
+def relative_band_power(payload, band, picks=None, total=(4.0, 45.0)):
+    """Return power in ``band`` as a fraction of total power over ``total`` Hz, per
+    channel. Relative beta (beta / 4-45 Hz) is the standard STN-LFP / DBS biomarker.
+    """
+    fmin, fmax = BANDS[band]
+    freqs, psds = spectrum(payload, fmax=max(fmax, total[1]) + 5.0, picks=picks)
+    band_mask = (freqs >= fmin) & (freqs <= fmax)
+    total_mask = (freqs >= total[0]) & (freqs <= total[1])
+    band_power_sum = psds[:, band_mask].sum(axis=1)
+    total_power = psds[:, total_mask].sum(axis=1)
+    return band_power_sum / (total_power + 1e-30)
+
+
 def time_frequency(payload, picks=None, fmax=40.0, method="morlet"):
     """Return ``(times, freqs, power)`` — a time-frequency map averaged across the
     selected channels; ``power`` is shaped ``(n_freqs, n_times)``.
