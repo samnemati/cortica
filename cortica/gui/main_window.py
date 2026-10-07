@@ -34,63 +34,22 @@ from .state import AppState
 
 _TRACE_COLORS = ["#2b6cb0", "#dd6b20", "#2f855a", "#c53030", "#6b46c1", "#2c7a7b"]
 
-#: A clean light theme for the Qt chrome (plots are styled separately to match).
+#: A deliberately small light-theme stylesheet for the Qt chrome.  Keep it minimal.
+#: A larger / more complex QSS here triggers a Core Animation layer hang on the
+#: first paint on macOS (seen on Qt 6.11 / macOS 15) once the window has grown
+#: past a certain complexity: the app reaches the event loop and calls show(),
+#: but the first frame never finishes compositing and no window ever appears.
+#: So this covers only the essentials: a light window background, readable text
+#: in inputs / lists / tables (which otherwise render as light-on-light and were
+#: invisible), and the accent Run button.  Plot styling lives in the matplotlib
+#: rcParams set in _apply_theme, not here.  Do not re-expand this without
+#: re-verifying the app still launches on macOS.
 _STYLESHEET = """
 QMainWindow, QDialog { background: #eef2f7; }
-QWidget { color: #1f2933; font-size: 13px; }
-QCheckBox { color: #1f2933; spacing: 5px; }
-QCheckBox:disabled { color: #a3adba; }
-QToolBar { background: #ffffff; border: none; border-bottom: 1px solid #d0d9e3;
-           spacing: 4px; padding: 5px 8px; }
-QToolButton { color: #1f2933; padding: 6px 10px; border-radius: 6px; }
-QToolButton:hover { background: #e6f0fa; }
-QToolButton:pressed { background: #d5e6f7; }
-QStatusBar { background: #ffffff; border-top: 1px solid #d0d9e3; color: #64748b; }
-QStatusBar QLabel { color: #64748b; }
-QLabel { color: #1f2933; }
-QLabel[heading="true"] { font-weight: 600; color: #33465c; padding: 6px 0 2px 2px; }
-QListWidget { background: #ffffff; border: 1px solid #d5dde5; border-radius: 8px;
-              padding: 4px; outline: none; }
-QListWidget::item { padding: 5px 6px; border-radius: 5px; color: #1f2933; }
-QListWidget::item:selected { background: #2b6cb0; color: #ffffff; }
-QListWidget::item:hover:!selected { background: #eaf2fb; }
-QListWidget::item:disabled { color: #a3adba; }
-QComboBox { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px;
-            padding: 4px 8px; min-height: 20px; }
-QComboBox:hover { border-color: #94a3b8; }
-QComboBox::drop-down { border: none; width: 18px; }
-QComboBox QAbstractItemView { background: #ffffff; border: 1px solid #cbd5e1;
-    selection-background-color: #2b6cb0; selection-color: #ffffff; outline: none; }
-QLineEdit, QAbstractSpinBox { background: #ffffff; color: #1f2933;
-    border: 1px solid #cbd5e1; border-radius: 6px; padding: 3px 6px; }
-QLineEdit:focus, QAbstractSpinBox:focus { border-color: #2b6cb0; }
-QLineEdit:disabled, QAbstractSpinBox:disabled { color: #a3adba; background: #f8fafc; }
-QTableWidget, QTableView { background: #ffffff; color: #1f2933;
-    border: 1px solid #d5dde5; border-radius: 8px; gridline-color: #e2e8f0; outline: none; }
-QTableWidget::item:selected, QTableView::item:selected {
-    background: #2b6cb0; color: #ffffff; }
-QHeaderView::section { background: #eef2f7; color: #33465c; border: none;
-    border-bottom: 1px solid #d5dde5; padding: 4px 6px; }
-QPushButton { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px;
-              padding: 6px 12px; color: #1f2933; }
-QPushButton:hover { background: #f1f5f9; border-color: #94a3b8; }
-QPushButton:pressed { background: #e2e8f0; }
-QPushButton:disabled { color: #a3adba; background: #f8fafc; }
-QPushButton#runButton { background: #2b6cb0; color: #ffffff; border: none;
-                        font-weight: 600; padding: 9px; }
-QPushButton#runButton:hover { background: #2c5282; }
-QPushButton#runButton:disabled { background: #9fbcdc; color: #eef2f7; }
-QSlider::groove:horizontal { height: 4px; background: #cbd5e1; border-radius: 2px; }
-QSlider::handle:horizontal { background: #2b6cb0; width: 14px; height: 14px;
-                             margin: -6px 0; border-radius: 7px; }
-QSlider::handle:horizontal:hover { background: #2c5282; }
-QSplitter::handle { background: #d0d9e3; }
-QScrollBar:vertical { background: transparent; width: 10px; margin: 2px; }
-QScrollBar::handle:vertical { background: #cbd5e1; border-radius: 5px; min-height: 24px; }
-QScrollBar::handle:vertical:hover { background: #94a3b8; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
-QToolTip { background: #1f2933; color: #ffffff; border: none; padding: 4px 6px; }
+QWidget { color: #1f2933; }
+QListWidget, QTableWidget, QTableView, QComboBox, QLineEdit, QAbstractSpinBox,
+QComboBox QAbstractItemView { background: #ffffff; color: #1f2933; }
+QPushButton#runButton { background: #2b6cb0; color: #ffffff; font-weight: 600; padding: 8px; }
 """
 
 #: View dropdown labels paired with their internal mode keys (one source of truth
