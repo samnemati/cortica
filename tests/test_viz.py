@@ -10,14 +10,16 @@ import pytest
 
 mne = pytest.importorskip("mne")
 
-from cortica.samples import eeg_sample, fnirs_sample  # noqa: E402
+from cortica.samples import eeg_sample, fnirs_sample, lfp_sample  # noqa: E402
 from cortica.steps.epoch import Average, EventEpochs, FixedLengthEpochs  # noqa: E402
 from cortica.steps.fnirs import BeerLambert, OpticalDensity  # noqa: E402
 from cortica.viz import (  # noqa: E402
     BANDS,
+    BURST_BANDS,
     CONNECTIVITY_METHODS,
     DECODE_CLASSIFIERS,
     band_power,
+    beta_bursts,
     channel_quality,
     cluster_test,
     condition_comparison,
@@ -180,6 +182,28 @@ def test_cluster_test_returns_condition_means_and_mask():
     times, mean_a, mean_b, sig, labels = cluster_test(epochs, n_permutations=100)
     assert len(mean_a) == len(mean_b) == len(sig) == len(times)
     assert len(labels) == 2
+
+
+def test_beta_bursts_detects_bursts_in_the_lfp_sample():
+    ds = lfp_sample()
+    channel = ds.payload.ch_names[0]
+    times, envelope, threshold, bursts, metrics = beta_bursts(ds.payload, channel)
+    assert len(envelope) == len(times)
+    assert metrics["n_bursts"] > 0  # the sample has bursting beta
+    assert metrics["rate"] > 0
+    assert 0.0 <= metrics["time_in_burst"] <= 1.0
+
+
+def test_beta_bursts_higher_threshold_gives_fewer_bursts():
+    ds = lfp_sample()
+    channel = ds.payload.ch_names[0]
+    _, _, _, _, low = beta_bursts(ds.payload, channel, percentile=60.0)
+    _, _, _, _, high = beta_bursts(ds.payload, channel, percentile=90.0)
+    assert high["time_in_burst"] <= low["time_in_burst"]
+
+
+def test_burst_bands_include_low_and_high_beta():
+    assert "Low beta (13-20 Hz)" in BURST_BANDS and "High beta (20-30 Hz)" in BURST_BANDS
 
 
 def test_erp_peaks_returns_latency_and_amplitude_per_channel():

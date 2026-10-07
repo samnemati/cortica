@@ -235,6 +235,18 @@ def test_signal_quality_view_uses_sci_for_fnirs(qtbot):
     assert w._view_mode == "quality"
 
 
+def test_beta_bursts_view_renders_for_the_lfp_sample(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._load_lfp_sample()
+    w._set_view("bursts")  # beta envelope + detected bursts, must render
+    assert w._view_mode == "bursts"
+    w.burst_pct_spin.setValue(80.0)  # threshold percentile is user-adjustable
+    assert w._burst_percentile == 80.0
+    w.burst_dur_spin.setValue(150.0)  # min burst duration is user-adjustable
+    assert w._burst_min_ms == 150.0
+
+
 def test_connectivity_is_a_view_option(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)

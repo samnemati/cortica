@@ -101,6 +101,7 @@ _VIEWS = [
     ("Topography", "topo"),
     ("Time-frequency", "tfr"),
     ("Signal quality", "quality"),
+    ("Beta bursts", "bursts"),
     ("Connectivity", "conn"),
     ("Decoding", "decoding"),
     ("Statistics", "stats"),
@@ -114,8 +115,8 @@ _VIEWS = [
 
 #: View modes rendered on the matplotlib canvas (the rest use pyqtgraph).
 _MPL_VIEWS = (
-    "topo", "tfr", "quality", "conn", "decoding", "stats", "source", "compare",
-    "peaks", "behavior", "rerp", "glm",
+    "topo", "tfr", "quality", "bursts", "conn", "decoding", "stats", "source",
+    "compare", "peaks", "behavior", "rerp", "glm",
 )
 
 
@@ -147,6 +148,9 @@ class MainWindow(QMainWindow):
         self._peak_mode = "abs"
         self._peak_tmin = 0.0
         self._peak_tmax = 0.8
+        self._burst_band = "Beta (13-30 Hz)"
+        self._burst_percentile = 75.0
+        self._burst_min_ms = 100.0
         self._source_result = None
         self._source_busy = False
         self._source_stc = None
@@ -396,6 +400,27 @@ class MainWindow(QMainWindow):
         self.peak_tmax_spin.setValue(0.8)
         self.peak_tmax_spin.valueChanged.connect(self._on_peak_window_changed)
         view_row.addWidget(self.peak_tmax_spin)
+        # Beta-burst controls (hidden unless the beta bursts view is active).
+        self.burst_band_selector = QComboBox()
+        self.burst_band_selector.addItems(list(viz.BURST_BANDS))
+        self.burst_band_selector.currentTextChanged.connect(self._on_burst_band_changed)
+        view_row.addWidget(self.burst_band_selector)
+        self.burst_pct_label = QLabel("Threshold pct:")
+        view_row.addWidget(self.burst_pct_label)
+        self.burst_pct_spin = QDoubleSpinBox()
+        self.burst_pct_spin.setRange(50.0, 99.0)
+        self.burst_pct_spin.setSingleStep(5.0)
+        self.burst_pct_spin.setValue(75.0)
+        self.burst_pct_spin.valueChanged.connect(self._on_burst_params_changed)
+        view_row.addWidget(self.burst_pct_spin)
+        self.burst_dur_label = QLabel("Min ms:")
+        view_row.addWidget(self.burst_dur_label)
+        self.burst_dur_spin = QDoubleSpinBox()
+        self.burst_dur_spin.setRange(10.0, 1000.0)
+        self.burst_dur_spin.setSingleStep(10.0)
+        self.burst_dur_spin.setValue(100.0)
+        self.burst_dur_spin.valueChanged.connect(self._on_burst_params_changed)
+        view_row.addWidget(self.burst_dur_spin)
         view_row.addStretch(1)
         # A Save-figure button lives right above the plot it saves, so it is always
         # visible regardless of how wide the toolbar is.
@@ -1055,6 +1080,17 @@ class MainWindow(QMainWindow):
         if self._view_mode == "peaks":
             self._replot()
 
+    def _on_burst_band_changed(self, text: str) -> None:
+        self._burst_band = text or "Beta (13-30 Hz)"
+        if self._view_mode == "bursts":
+            self._replot()
+
+    def _on_burst_params_changed(self, _value=None) -> None:
+        self._burst_percentile = self.burst_pct_spin.value()
+        self._burst_min_ms = self.burst_dur_spin.value()
+        if self._view_mode == "bursts":
+            self._replot()
+
     def _update_view_controls(self) -> None:
         view = self._view_mode
         for widget in (self.band_label, self.band_selector):
@@ -1084,6 +1120,9 @@ class MainWindow(QMainWindow):
         for widget in (self.peak_mode_label, self.peak_mode_selector,
                        self.peak_window_label, self.peak_tmin_spin, self.peak_tmax_spin):
             widget.setVisible(view == "peaks")
+        for widget in (self.burst_band_selector, self.burst_pct_label, self.burst_pct_spin,
+                       self.burst_dur_label, self.burst_dur_spin):
+            widget.setVisible(view == "bursts")
 
     def _show_computing(self, message: str) -> None:
         """Paint a 'Computing…' notice on the plot and show a wait cursor before a
@@ -1125,6 +1164,9 @@ class MainWindow(QMainWindow):
             return
         if self._view_mode == "quality":
             self._plot_quality(payload)
+            return
+        if self._view_mode == "bursts":
+            self._plot_bursts(payload)
             return
         if self._view_mode == "conn":
             self._plot_connectivity(payload)
@@ -1266,6 +1308,57 @@ class MainWindow(QMainWindow):
             ax.set_axis_off()
             ax.text(0.5, 0.5, "Quality metric unavailable.", ha="center", va="center")
             self.statusBar().showMessage(f"Signal quality: {exc}")
+        self._mpl_canvas.draw_idle()
+
+    def _plot_bursts(self, payload) -> None:
+        self._mpl_fig.clear()
+        ax = self._mpl_fig.add_subplot(111)
+        if payload is None or not hasattr(payload, "get_data"):
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "Load a recording to detect beta bursts.",
+                    ha="center", va="center")
+            self._mpl_canvas.draw_idle()
+            return
+        picks = self._current_picks()
+        if not picks:
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "Select at least one channel.", ha="center", va="center")
+            self._mpl_canvas.draw_idle()
+            return
+        channel = picks[0]
+        fmin, fmax = viz.BURST_BANDS.get(self._burst_band, (13.0, 30.0))
+        try:
+            times, envelope, threshold, bursts, metrics = viz.beta_bursts(
+                payload, channel, fmin=fmin, fmax=fmax,
+                percentile=self._burst_percentile, min_duration=self._burst_min_ms / 1000.0,
+            )
+            self._mpl_fig.clear()
+            ax = self._mpl_fig.add_subplot(111)
+            ax.plot(times, envelope * 1e6, color="#2b6cb0", linewidth=0.8)
+            ax.axhline(threshold * 1e6, color="#c53030", linestyle="--", linewidth=0.9,
+                       label=f"{self._burst_percentile:.0f}th pct")
+            for start, end in bursts:
+                ax.axvspan(start, end, color="#f6ad55", alpha=0.4)
+            ax.set_xlabel("Time (s)")
+            ax.set_ylabel("Beta amplitude (µV)")
+            ax.set_title(
+                f"Beta bursts: {channel} ({self._burst_band})\n"
+                f"rate {metrics['rate']:.2f}/s, mean {metrics['mean_duration'] * 1000:.0f} ms, "
+                f"time in burst {metrics['time_in_burst'] * 100:.0f}%",
+                fontsize=9,
+            )
+            ax.legend(loc="upper right", fontsize=8)
+            self._mpl_fig.tight_layout()
+            self.statusBar().showMessage(
+                f"Beta bursts {channel}: {metrics['n_bursts']} bursts, "
+                f"{metrics['time_in_burst'] * 100:.0f}% time in burst"
+            )
+        except Exception as exc:
+            self._mpl_fig.clear()
+            ax = self._mpl_fig.add_subplot(111)
+            ax.set_axis_off()
+            ax.text(0.5, 0.5, "Beta bursts unavailable.", ha="center", va="center")
+            self.statusBar().showMessage(f"Beta bursts: {exc}")
         self._mpl_canvas.draw_idle()
 
     def _plot_connectivity(self, payload) -> None:

@@ -260,6 +260,64 @@ def glm_analysis(payload, stim_dur=5.0, drift_order=1):
     return run_glm(payload, design).to_dataframe()
 
 
+#: Frequency bands for beta-burst analysis (display label -> (fmin, fmax)).
+BURST_BANDS = {
+    "Beta (13-30 Hz)": (13.0, 30.0),
+    "Low beta (13-20 Hz)": (13.0, 20.0),
+    "High beta (20-30 Hz)": (20.0, 30.0),
+    "Gamma (30-45 Hz)": (30.0, 45.0),
+}
+
+
+def beta_bursts(payload, channel, fmin=13.0, fmax=30.0, percentile=75.0, min_duration=0.1):
+    """Beta-burst analysis (Tinkhauser et al., 2017) for one channel: band-pass to
+    ``[fmin, fmax]``, take the Hilbert amplitude envelope, threshold at the given
+    ``percentile``, and keep supra-threshold runs lasting at least ``min_duration`` s.
+
+    Returns ``(times, envelope, threshold, bursts, metrics)`` where ``bursts`` is a
+    list of ``(start_s, end_s)`` and ``metrics`` has ``n_bursts``, ``rate`` (per s),
+    ``mean_duration`` (s), and ``time_in_burst`` (fraction of the recording).
+    """
+    from mne.filter import filter_data
+    from scipy.signal import hilbert
+
+    sfreq = float(payload.info["sfreq"])
+    data = np.asarray(payload.get_data(picks=[channel]), dtype=float)
+    if data.ndim == 3:
+        data = data.mean(axis=0)
+    signal = data[0]
+    times = np.asarray(getattr(payload, "times", np.arange(len(signal)) / sfreq))
+
+    filtered = filter_data(signal[np.newaxis, :], sfreq, fmin, fmax, verbose=False)[0]
+    envelope = np.abs(hilbert(filtered))
+    threshold = float(np.percentile(envelope, percentile))
+    above = envelope > threshold
+    min_samples = max(1, int(min_duration * sfreq))
+
+    bursts = []
+    i, n = 0, len(above)
+    while i < n:
+        if above[i]:
+            j = i
+            while j < n and above[j]:
+                j += 1
+            if (j - i) >= min_samples:
+                bursts.append((float(times[i]), float(times[j - 1])))
+            i = j
+        else:
+            i += 1
+
+    total = len(signal) / sfreq
+    durations = [end - start for start, end in bursts]
+    metrics = {
+        "n_bursts": len(bursts),
+        "rate": len(bursts) / total if total else 0.0,
+        "mean_duration": float(np.mean(durations)) if durations else 0.0,
+        "time_in_burst": float(sum(durations) / total) if total else 0.0,
+    }
+    return times, envelope, threshold, bursts, metrics
+
+
 def erp_peaks(evoked, tmin=None, tmax=None, mode="abs"):
     """Per-channel ERP peak within ``[tmin, tmax]``. ``mode`` is ``"abs"``/``"pos"``/
     ``"neg"``. Returns ``(ch_names, latencies, amplitudes)``; latencies in seconds,
