@@ -565,6 +565,27 @@ def test_workflow_suggestions_update_when_data_becomes_epochs(qtbot):
     assert any("Average" in t for t in texts)
 
 
+def test_view_3d_brain_guides_without_a_source_estimate(qtbot):
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._view_3d_brain()  # no source estimate computed yet
+    assert "Localize sources" in w.statusBar().currentMessage()
+
+
+def test_view_3d_brain_needs_the_viz3d_extra_when_pyvista_missing(qtbot):
+    try:
+        import pyvista  # noqa: F401
+
+        pytest.skip("pyvista installed; the extra-missing guard does not apply")
+    except ImportError:
+        pass
+    w = MainWindow()
+    qtbot.addWidget(w)
+    w._source_stc = object()  # pretend a source estimate exists
+    w._view_3d_brain()
+    assert "viz3d" in w.statusBar().currentMessage()
+
+
 def test_apply_ica_choice_adds_an_ica_step(qtbot):
     w = MainWindow()
     qtbot.addWidget(w)

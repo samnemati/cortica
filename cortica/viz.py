@@ -386,11 +386,12 @@ def condition_comparison(epochs):
     return np.asarray(epochs.times), means, difference
 
 
-def source_localization(evoked, n_regions=12):
+def source_localization(evoked, n_regions=12, return_stc=False):
     """Estimate cortical sources on the fsaverage template (dSPM) and return the
     most active anatomical regions as ``(region_names, strengths)``.
 
     ``evoked`` must be an Evoked. Downloads the fsaverage template on first use.
+    With ``return_stc=True`` also returns ``(stc, subjects_dir)`` for 3-D plotting.
     """
     import os.path as op
 
@@ -425,4 +426,7 @@ def source_localization(evoked, n_regions=12):
     )
     strength = np.abs(np.asarray(label_tc)).mean(axis=1)
     order = np.argsort(strength)[::-1][:n_regions]
-    return [labels[i].name for i in order], strength[order]
+    names, strengths = [labels[i].name for i in order], strength[order]
+    if return_stc:
+        return names, strengths, stc, subjects_dir
+    return names, strengths

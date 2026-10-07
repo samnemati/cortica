@@ -267,6 +267,9 @@ def test_condition_comparison_returns_means_and_difference():
 @pytest.mark.skipif(not op.exists(_FSAVERAGE), reason="fsaverage template not downloaded")
 def test_source_localization_returns_region_activity():
     evoked = Average().apply(FixedLengthEpochs().apply(eeg_sample(), {"duration": 1.0}), {}).payload
-    names, strengths = source_localization(evoked, n_regions=8)
+    names, strengths, stc, subjects_dir = source_localization(
+        evoked, n_regions=8, return_stc=True
+    )
     assert len(names) == 8
     assert len(strengths) == 8
+    assert stc.data.shape[0] > 0  # a source estimate is available for 3-D plotting

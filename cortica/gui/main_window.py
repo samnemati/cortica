@@ -149,6 +149,9 @@ class MainWindow(QMainWindow):
         self._peak_tmax = 0.8
         self._source_result = None
         self._source_busy = False
+        self._source_stc = None
+        self._source_subjects_dir = None
+        self._brain = None
         self._src_signals = None
         self._last_preview_path = None
         self.setWindowTitle("Cortica")
@@ -215,6 +218,9 @@ class MainWindow(QMainWindow):
         group_action = QAction("Group analysis…", self)
         group_action.triggered.connect(self._open_group_analysis)
         toolbar.addAction(group_action)
+        brain_action = QAction("3-D brain…", self)
+        brain_action.triggered.connect(self._view_3d_brain)
+        toolbar.addAction(brain_action)
 
         # Keep the same actions in a menu too (native menu bar on macOS/Linux).
         sample_menu = self.menuBar().addMenu("Sample")
@@ -887,16 +893,48 @@ class MainWindow(QMainWindow):
         self._source_busy = True
         self._set_view("source")  # paints a "Localizing…" notice in the plot area
         self.statusBar().showMessage("Localizing sources on the fsaverage template…")
-        self._src_signals = run_in_background(lambda: viz.source_localization(payload))
+        self._src_signals = run_in_background(
+            lambda: viz.source_localization(payload, return_stc=True)
+        )
         self._src_signals.finished.connect(self._on_sources_ready)
         self._src_signals.failed.connect(self._on_sources_failed)
 
     def _on_sources_ready(self, result) -> None:
         self._source_busy = False
-        self._source_result = result
+        if len(result) == 4:
+            names, strengths, self._source_stc, self._source_subjects_dir = result
+            self._source_result = (names, strengths)
+        else:  # a (names, strengths) pair, e.g. from a test
+            self._source_result = result
         self._src_signals = None
         self._set_view("source")
-        self.statusBar().showMessage("Source localization complete.")
+        self.statusBar().showMessage(
+            "Source localization complete. Use '3-D brain…' for the cortical view."
+        )
+
+    def _view_3d_brain(self) -> None:
+        if self._source_stc is None:
+            self.statusBar().showMessage("Localize sources first (use 'Localize sources…').")
+            return
+        try:
+            import pyvista  # noqa: F401
+        except ImportError:
+            self.statusBar().showMessage(
+                "3-D brain needs the viz3d extra: pip install 'cortica[viz3d]'"
+            )
+            return
+        try:
+            import mne
+
+            mne.viz.set_3d_backend("pyvistaqt")
+            self._brain = self._source_stc.plot(
+                subject="fsaverage", subjects_dir=self._source_subjects_dir,
+                hemi="both", surface="inflated", time_viewer=True,
+                title="Cortica source estimate",
+            )
+            self.statusBar().showMessage("Opened the 3-D source brain.")
+        except Exception as exc:
+            self.statusBar().showMessage(f"3-D brain: {exc}")
 
     def _on_sources_failed(self, message: str) -> None:
         self._source_busy = False
