@@ -118,7 +118,16 @@ Frequency bands used throughout: **Delta** (1–4 Hz), **Theta** (4–8), **Alph
 Cortica installs with plain `pip` - because pip-installed packages are not
 quarantined, there is **no macOS Gatekeeper prompt** and nothing to sign.
 
-**From source (works today):**
+**From PyPI:**
+
+```bash
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install "cortica[gui]"       # engine + desktop GUI
+cortica                          # launch the app
+```
+
+**From source (for development):**
 
 ```bash
 git clone https://github.com/samnemati/cortica.git
@@ -128,21 +137,17 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[gui]"
 ```
 
-**From PyPI (planned for the first release):**
-
-```bash
-pip install "cortica[gui]"       # engine + desktop GUI
-```
-
 The headless engine installs without Qt (`pip install cortica`); the **`[gui]`**
 extra adds PySide6 and pyqtgraph for the desktop app.
 
 <details>
 <summary>What gets installed</summary>
 
-Core dependencies: NumPy, SciPy, PyYAML, matplotlib, scikit-learn, and the MNE
-stack (`mne`, `mne-nirs`, `mne-connectivity`). The `[gui]` extra adds `PySide6` and
-`pyqtgraph`. Python **3.10 or newer**, on Windows, macOS, or Linux.
+Core dependencies: NumPy, SciPy, PyYAML, pandas, matplotlib, scikit-learn,
+PyWavelets, openpyxl, and the MNE stack (`mne`, `mne-nirs`, `mne-connectivity`).
+The `[gui]` extra adds `PySide6` and `pyqtgraph`; `[viz3d]` adds `pyvista` and
+`pyvistaqt` for the 3-D brain view. Python **3.10 or newer**, on Windows, macOS,
+or Linux.
 </details>
 
 ---
@@ -314,19 +319,21 @@ gui/     PySide6 desktop app - orchestrates the above, never analyzes
 pip install -e ".[dev]"
 pytest              # engine + steps + viz + report + CLI
 ruff check .        # lint
+mypy cortica        # types
 
 # GUI tests need a Qt binding and run headless (offscreen):
 pip install -e ".[dev,gui,gui-test]"
-QT_QPA_PLATFORM=offscreen pytest tests/test_gui_main_window.py
+QT_QPA_PLATFORM=offscreen pytest tests/test_gui_*.py
 ```
 
 The `core` engine has no Qt dependency and includes a round-trip test proving a
 saved pipeline re-runs to an identical result. GUI logic lives in a headless
 `AppState` controller so it can be driven and asserted on offscreen. Continuous
 integration runs the engine suite across **Windows, macOS, and Linux** on Python
-3.10–3.12, plus a dedicated GUI job on all three platforms. See
+3.10–3.13, plus a dedicated GUI and type-checking job on all three platforms. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for how to add a step,
 [`docs/specs/2026-09-15-cortica-design.md`](docs/specs/2026-09-15-cortica-design.md)
-for the full design and [`RUNNING.md`](RUNNING.md) for run/relaunch notes.
+for the full design, and [`RUNNING.md`](RUNNING.md) for run/relaunch notes.
 
 ---
 
@@ -335,15 +342,19 @@ for the full design and [`RUNNING.md`](RUNNING.md) for run/relaunch notes.
 **Pre-alpha, under active development** - but already end-to-end and fully tested.
 
 **Working today:** the reproducible-pipeline engine and CLI; EEG preprocessing
-(montage, band-pass, notch, resample, re-reference, interpolate, ICA); fNIRS
-preprocessing (optical density, SCI, TDDR, Beer–Lambert); fixed and event-based
+(montage, band-pass, notch, resample, re-reference, bipolar reference, interpolate,
+ICA); fNIRS preprocessing (optical density, SCI, Beer–Lambert, short-channel
+regression, and TDDR/wavelet/spline motion correction); fixed and event-based
 epoching and averaging; and the full set of views above - spectra, band-power head
-maps, time-frequency, connectivity + connectogram, decoding (with classifier and
-mode choices), cluster statistics, condition comparison, and template source
-localization. Plus a guided workflow panel, an in-app report preview, and export.
+maps, time-frequency, signal quality, beta bursts, connectivity + connectogram,
+decoding (with classifier and mode choices), cluster statistics, condition
+comparison, ERP peaks, rERP, fNIRS GLM, and template source localization. Plus a
+guided workflow panel, group-level and brain-behavior analysis, an optional 3-D
+glass-brain source view (`pip install "cortica[viz3d]"`), an in-app report preview,
+and figure/CSV export.
 
-**On the roadmap:** a 3-D glass-brain source view, packaged installers (Briefcase),
-and the first PyPI release.
+**On the roadmap:** packaged desktop installers (Briefcase), so the app can be
+installed without a Python environment.
 
 ---
 

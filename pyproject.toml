@@ -22,6 +22,7 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Operating System :: OS Independent",
   "Topic :: Scientific/Engineering :: Medical Science Apps.",
 ]
@@ -75,3 +76,16 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+# The scientific stack (mne, mne-nirs, mne-connectivity, pyqtgraph, pyvista, nilearn)
+# ships no type stubs, so importing it is not a typing error.
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Not yet annotated: Qt's attribute narrowing (optional-widget lookups, signal
+# holders initialised to None) and matplotlib's `extent` tuples need work here.
+# Every other module is type-clean and CI gates on that.
+module = "cortica.gui.main_window"
+ignore_errors = true
